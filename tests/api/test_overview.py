@@ -124,3 +124,42 @@ def test_sessions_without_raw_data(config_path):
         f.unlink()
     sessions = build_sessions(config, NOW)
     assert sessions["days"] == [] and sessions["first_day"] is None
+
+
+def write_events(config, *events):
+    path = Path(config["storage"]["base_path"]) / "status" / "collector_events.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps({"ts": ts, "status": status, **extra}) for ts, status, extra in events]
+    path.write_text("\n".join(lines + ["not json"]) + "\n")
+
+
+def test_sessions_quality_comes_from_the_event_history(config_path):
+    config = validate_config(config_path)
+    raw = Path(config["storage"]["raw_path"])
+    for day in ("2026-11-14", "2026-11-15"):
+        (raw / f"binance_btcusdt_depth_{day}.jsonl.gz").write_bytes(b"x")
+    write_events(config,
+                 ("2026-11-15T10:00:00Z", "STARTED", {}),                      # history starts: partial day
+                 ("2026-11-17T03:00:00Z", "RESYNCING", {"gap": True, "policy": {"x": 1}}),
+                 ("2026-11-18T09:00:00Z", "RESYNCING", {"gap": False}))
+    sessions = build_sessions(config, NOW)
+    days = {d["day"]: d for d in sessions["days"]}
+    assert sessions["quality_since"] == "2026-11-15"
+    assert days["2026-11-14"]["quality"] is None
+    assert days["2026-11-15"]["quality"]["partial"] and days["2026-11-15"]["quality"]["verdict"] == "reconnects"
+    assert days["2026-11-16"]["quality"] == {"restarts": 0, "reconnects": 0, "gaps": 0, "halts": 0,
+                                            "verdict": "clean", "partial": False}
+    assert days["2026-11-17"]["quality"]["verdict"] == "gap"
+    assert days["2026-11-18"]["quality"]["verdict"] == "reconnects"
+    assert sessions["clean_days"] == 1  # only 11-16: 11-15 partial, 11-17 gap, 11-18 open
+
+    overview = build_overview(config, NOW)
+    assert overview["gates"]["clean_days"] == 1
+    assert [e["status"] for e in overview["events"]] == ["RESYNCING", "RESYNCING", "STARTED"]
+    assert "policy" not in overview["events"][1]
+
+
+def test_no_history_means_quality_unknown(config_path):
+    sessions = build_sessions(validate_config(config_path), NOW)
+    assert sessions["quality_since"] is None and sessions["clean_days"] is None
+    assert all(d["quality"] is None for d in sessions["days"])

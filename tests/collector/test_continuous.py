@@ -337,3 +337,50 @@ def test_heartbeat_prints_counts_periodically(monkeypatch, config, capsys):
     assert len(beats) >= 2
     assert {"uptime_seconds", "gap_count", "reconnect_count", "raw_bytes", "total_written_events"} <= beats[-1].keys()
     assert "policy" not in beats[-1] and "pipeline_metrics" not in beats[-1]
+
+
+def events(config):
+    path = Path(config["storage"]["base_path"]) / "status" / worker.EVENTS_FILE
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_state_events_are_kept_as_history(monkeypatch, config):
+    capture(monkeypatch)
+    sessions = []
+
+    async def fake_session(cfg, max_events, on_progress=None):
+        sessions.append(1)
+        if len(sessions) == 1:
+            raise OrderBookGap("depth gap")
+        if len(sessions) == 2:
+            raise stream.StreamSyncError("connection closed")
+        await asyncio.Event().wait()
+
+    async def fake_sleep(seconds):
+        return None
+
+    monkeypatch.setattr(stream, "stream_session", fake_session)
+    monkeypatch.setattr(worker.asyncio, "sleep", fake_sleep)
+    asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.02))
+    history = events(config)
+    assert [e["status"] for e in history] == ["STARTED", "RESYNCING", "RESYNCING", "STOPPED"]
+    assert [e.get("gap") for e in history[1:3]] == [True, False]
+    assert all(e["ts"].endswith("Z") for e in history)
+
+
+def test_event_history_write_failure_never_stops_collection(config, capsys):
+    status = Path(config["storage"]["base_path"]) / "status"
+    status.parent.mkdir(parents=True, exist_ok=True)
+    status.write_text("not a directory")  # every history write now fails
+    worker.emit(config, {"status": "HEARTBEAT"})
+    assert '"HEARTBEAT"' in capsys.readouterr().out
+
+
+def test_event_history_rotates_once_at_the_size_cap(monkeypatch, config):
+    monkeypatch.setattr(worker, "EVENTS_MAX_BYTES", 200)
+    for i in range(20):
+        worker.emit(config, {"status": "HEARTBEAT", "n": i})
+    status = Path(config["storage"]["base_path"]) / "status"
+    assert (status / (worker.EVENTS_FILE + ".1")).exists()
+    assert sorted(p.name for p in status.iterdir()) == [worker.EVENTS_FILE, worker.EVENTS_FILE + ".1"]
+    assert events(config)[-1]["n"] == 19
