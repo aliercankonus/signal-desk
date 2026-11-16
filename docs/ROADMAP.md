@@ -4,7 +4,7 @@ Markets are pluggable: each venue (crypto exchange or stock broker) is registere
 
 Each phase has an exit gate. Do not start the next phase until the gate is met and the owner agrees.
 
-## Phase 0 — Clean start (current)
+## Phase 0 — Clean start (done 2026-11-16)
 - Fresh repository with the working core from `signal-desk-prediction` (collector, order book, features, replay, research, paper fill model).
 - CI builds and tests the image on every PR, and publishes `ghcr.io/aliercankonus/signal-desk:main` on merge.
 - VPS: firewall to SSH/HTTP/HTTPS only; stop the old Hermes agent and old project containers.
@@ -14,14 +14,14 @@ Status (2026-11-16):
 - [x] Repo created, CI green, image published to GHCR
 - [x] GHCR package `signal-desk` is public (anonymous pull works)
 - [x] VPS reinstalled as "Ubuntu 24.04 with Docker and Traefik"; no old Hermes/project containers remain
-- [ ] Old Hermes/ChatGPT credentials revoked (owner to confirm)
+- [x] Old Hermes/ChatGPT credentials: owner reviewed and chose to leave them as is (VPS reinstalled, token files gone, no SSH keys on the VPS or account)
 - [x] Firewall: inbound TCP 22, 80, 443 only (Hostinger firewall, synced and active)
 - [x] Deployed with `vps_docker_create`; api healthy (127.0.0.1:8080 only), collector running
 - [x] Collector stream buffer raised 256 -> 4096 (#4) after early overflow resyncs; after redeploy: 0 gaps, peak queue 1012, one stale-feed reconnect in the first 5 min
 
-**Gate met** (API and collector running, health ok). Phase 1 starts once the credentials item is confirmed.
+**Gate met** (API and collector running, health ok). Owner approved moving to Phase 1.
 
-## Phase 1 — Data collection (2–4 weeks)
+## Phase 1 — Data collection (2–4 weeks, current — started 2026-11-16)
 - Collector runs in continuous mode; daily check of status, gaps, reconnects and disk use.
 - Add raw-file retention/compression before the 30 GB raw quota is reached.
 - **Gate:** at least 14 days of gap-free sessions with a clean raw audit.
