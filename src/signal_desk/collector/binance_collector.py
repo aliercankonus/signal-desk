@@ -133,7 +133,7 @@ class StreamSyncError(RuntimeError):
 
 
 # Smoke-test bounds, not a claim of continuous collector readiness.
-STREAM_BUFFER_LIMIT = 256
+STREAM_BUFFER_LIMIT = 4096  # bursts overflowed 256 on the VPS (event writes spike to ~250 ms)
 STREAM_MESSAGE_MAX_BYTES = 256 * 1024
 STREAM_WAIT_SECONDS = 10
 SNAPSHOT_ATTEMPTS = 3
