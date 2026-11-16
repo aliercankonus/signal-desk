@@ -10,6 +10,13 @@ Each phase has an exit gate. Do not start the next phase until the gate is met a
 - VPS: firewall to SSH/HTTP/HTTPS only; stop the old Hermes agent and old project containers.
 - **Gate:** API and collector from this repo run on the VPS via the Hostinger Docker manager; health is ok.
 
+Status (2026-11-16):
+- [x] Repo created, CI green, image published to GHCR
+- [ ] GHCR package `signal-desk` set to Public (owner, GitHub UI)
+- [ ] VPS reinstalled as "Ubuntu 24.04 with Docker" (owner started it); old Hermes/ChatGPT credentials revoked
+- [ ] Firewall: inbound 22, 80, 443 only
+- [ ] Deploy with `vps_docker_create` (see `.claude/skills/vps-ops`), then confirm api healthy + collector running
+
 ## Phase 1 — Data collection (2–4 weeks)
 - Collector runs in continuous mode; daily check of status, gaps, reconnects and disk use.
 - Add raw-file retention/compression before the 30 GB raw quota is reached.
