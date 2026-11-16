@@ -18,11 +18,11 @@ services:
       start_period: 10s
     # Optional HTTPS route for the read-only overview page through the VPS's Traefik, behind
     # basic auth. Off unless the project environment sets UI_PUBLIC=true, UI_HOST and
-    # UI_BASICAUTH (htpasswd bcrypt line, single-quoted so $ is literal). Only "/" and
-    # "/api/status" are routed; /health stays internal and port 8080 stays on 127.0.0.1.
+    # UI_BASICAUTH (htpasswd bcrypt line, single-quoted so $ is literal). Only the pages and
+    # their /api/ data are routed; /health stays internal and port 8080 stays on 127.0.0.1.
     labels:
       - "traefik.enable=${UI_PUBLIC:-false}"
-      - "traefik.http.routers.signal-desk-ui.rule=Host(`${UI_HOST:-ui.invalid}`) && (Path(`/`) || Path(`/api/status`))"
+      - "traefik.http.routers.signal-desk-ui.rule=Host(`${UI_HOST:-ui.invalid}`) && (Path(`/`) || Path(`/api/status`) || Path(`/sessions`) || Path(`/api/sessions`))"
       - "traefik.http.routers.signal-desk-ui.entrypoints=websecure"
       - "traefik.http.routers.signal-desk-ui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.signal-desk-ui.middlewares=signal-desk-ui-auth"

@@ -15,6 +15,7 @@ import uuid
 from websockets.exceptions import ConnectionClosed, InvalidStatusCode
 
 from signal_desk.collector import binance_collector as stream
+from signal_desk.collector.binance_mapping import utc_now_iso
 from signal_desk.collector.order_book_state import OrderBookGap
 from signal_desk.collector.recovery import RecoveryPolicy
 from signal_desk.config.loader import validate_config
@@ -28,6 +29,26 @@ HEARTBEAT_FIELDS = ("session_synchronized", "total_written_events", "total_depth
                     "compacted_bytes_saved", "last_compaction_error")
 COMPACT_PAUSE_SECONDS = 0.005  # per 1 MiB chunk, so compression doesn't starve the event path
 _compact_sleep = asyncio.sleep  # bound at import; independent of the reconnect backoff sleep
+EVENTS_FILE = "collector_events.jsonl"  # state history under <base>/status, read by the API
+EVENTS_MAX_BYTES = 5 * 1024 * 1024  # then rotated once to .1: a few KB/day lasts years
+
+
+def emit(config, line):
+    """Print a state line and append it to the event history.
+
+    The history is best-effort: a failed write is ignored and never stops collection.
+    """
+    text = json.dumps({"ts": utc_now_iso(), **line}, default=str)
+    print(text, flush=True)
+    path = Path(config["storage"]["base_path"]) / "status" / EVENTS_FILE
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size > EVENTS_MAX_BYTES:
+            path.replace(path.with_name(EVENTS_FILE + ".1"))
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(text + "\n")
+    except OSError:
+        pass
 
 
 class StorageLimit(RuntimeError):
@@ -79,11 +100,12 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
               "total_trade_events": 0, "gap_count": 0, "reconnect_count": 0}
     runtime = {"continuous": True, "policy": asdict(policy), **totals}
     config["_collector_runtime"] = runtime
+    emit(config, {"status": "STARTED"})
     try:
         config["_storage_guard"] = StorageGuard(config, policy.storage_check_seconds)
     except (StorageLimit, OSError, ValueError) as exc:
         stream.write_status(config, "HALT", str(exc))
-        print(json.dumps({"status": "HALT", "reason": str(exc)}), flush=True)
+        emit(config, {"status": "HALT", "reason": str(exc)})
         return 3
 
     async def recover():
@@ -120,7 +142,7 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
                 # Rate limits/bans and permanent HTTP failures require investigation.
                 if status_code is not None and status_code < 500:
                     stream.write_status(config, "HALT", str(exc), http_status=status_code)
-                    print(json.dumps({"status": "HALT", "reason": str(exc)}), flush=True)
+                    emit(config, {"status": "HALT", "reason": str(exc)})
                     return 3
                 failures += 1
                 runtime["consecutive_failures"] = failures
@@ -129,19 +151,20 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
                 if failures >= policy.max_failures:
                     stream.write_status(config, "HALT", "recovery_budget_exhausted",
                                         last_error=str(exc))
-                    print(json.dumps({"status": "HALT", "reason": "recovery_budget_exhausted",
-                                      **runtime}), flush=True)
+                    emit(config, {"status": "HALT", "reason": "recovery_budget_exhausted",
+                                      **runtime})
                     return 3
                 delay = policy.delay(failures)
                 stream.write_status(config, "RESYNCING", str(exc), retry_in_seconds=delay)
-                print(json.dumps({"status": "RESYNCING", "reason": str(exc),
-                                  "retry_in_seconds": delay, **runtime}), flush=True)
+                emit(config, {"status": "RESYNCING", "reason": str(exc),
+                              "gap": isinstance(exc, OrderBookGap),
+                                  "retry_in_seconds": delay, **runtime})
                 # Each retry opens a new WS, creates a new book and fetches a new snapshot.
                 await asyncio.sleep(delay)
             except Exception as exc:
                 # Schema, malformed data and persistent storage failures aren't network retries.
                 stream.write_status(config, "HALT", str(exc))
-                print(json.dumps({"status": "HALT", "reason": str(exc)}), flush=True)
+                emit(config, {"status": "HALT", "reason": str(exc)})
                 return 3
 
     async def compactor():
@@ -156,21 +179,21 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
                     guard.release(saved)
                     runtime["raw_bytes"] = guard.used
                     runtime["compacted_bytes_saved"] = runtime.get("compacted_bytes_saved", 0) + saved
-                    print(json.dumps({"status": "COMPACTED", "files": files, "saved_bytes": saved,
-                                      "raw_bytes": guard.used}), flush=True)
+                    emit(config, {"status": "COMPACTED", "files": files, "saved_bytes": saved,
+                                      "raw_bytes": guard.used})
                 files, freed = await asyncio.to_thread(
                     compact.delete_expired_days, guard.raw, today, guard.keep_days, guard.pinned)
                 if files:
                     guard.release(freed)
                     runtime["raw_bytes"] = guard.used
-                    print(json.dumps({"status": "RETENTION", "deleted_files": files, "freed_bytes": freed,
-                                      "keep_days": guard.keep_days, "raw_bytes": guard.used}), flush=True)
+                    emit(config, {"status": "RETENTION", "deleted_files": files, "freed_bytes": freed,
+                                      "keep_days": guard.keep_days, "raw_bytes": guard.used})
                 runtime.pop("last_compaction_error", None)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 runtime["last_compaction_error"] = str(exc)
-                print(json.dumps({"status": "COMPACTION_ERROR", "reason": str(exc)}), flush=True)
+                emit(config, {"status": "COMPACTION_ERROR", "reason": str(exc)})
             await _compact_sleep(COMPACT_INTERVAL_SECONDS)
 
     async def heartbeat():
@@ -180,7 +203,7 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
             line = {"status": "HEARTBEAT", "uptime_seconds": round(time.monotonic() - started)}
             line.update({key: runtime[key] for key in HEARTBEAT_FIELDS if key in runtime})
             line["raw_bytes"] = config["_storage_guard"].used
-            print(json.dumps(line), flush=True)
+            emit(config, line)
             await _compact_sleep(HEARTBEAT_INTERVAL_SECONDS)
 
     worker = asyncio.create_task(recover())
@@ -209,7 +232,7 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
         was_synchronized = runtime.get("session_synchronized", False)
         runtime["session_synchronized"] = False
         stream.write_status(config, "STOPPED", reason)
-        print(json.dumps({"status": "STOPPED", "reason": reason, **runtime}), flush=True)
+        emit(config, {"status": "STOPPED", "reason": reason, **runtime})
         return 0 if stopper in done or was_synchronized else 2
     finally:
         worker.cancel()

@@ -6,10 +6,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import sys
 from pathlib import Path
 
-from signal_desk.api.overview import build_overview
+from signal_desk.api.overview import build_overview, build_sessions
 from signal_desk.config.loader import ConfigError, validate_config
 
-OVERVIEW_PAGE = Path(__file__).with_name("static") / "overview.html"
+STATIC = Path(__file__).with_name("static")
+PAGES = {"/": STATIC / "overview.html", "/sessions": STATIC / "sessions.html"}
 
 
 def build_status(config_path: str) -> tuple[int, dict]:
@@ -50,11 +51,14 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
-        if path == "/":
-            self._send_raw(200, OVERVIEW_PAGE.read_bytes(), "text/html; charset=utf-8")
+        if path in PAGES:
+            self._send_raw(200, PAGES[path].read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/api/status":
-            self._api_status()
+            self._api_json(build_overview)
+            return
+        if path == "/api/sessions":
+            self._api_json(build_sessions)
             return
         if path not in ("/health", "/ready"):
             self._send(404, {"error": "not_found"})
@@ -64,10 +68,10 @@ class HealthHandler(BaseHTTPRequestHandler):
         code, status = HealthHandler.cached_status
         self._send(code, status)
 
-    def _api_status(self) -> None:
+    def _api_json(self, build) -> None:
         try:
             config = validate_config(self.config_path)
-            payload = build_overview(config)
+            payload = build(config)
         except Exception as exc:  # detail goes to the server log, never to clients
             print(f"health_server overview failed: {exc}", file=sys.stderr, flush=True)
             self._send(503, {"error": "overview_unavailable"})

@@ -32,4 +32,4 @@ Intended state: inbound TCP 22, 80, 443 only. Use `vps_firewall_*` operations; a
 
 ## Never
 - Recreate/reinstall the VM, delete snapshots/backups, or change root passwords.
-- Expose the API port publicly; it binds to 127.0.0.1 by design. The only public path is the overview page through Traefik with basic auth (owner-approved 2026-11-16), and only `/` and `/api/status` are routed.
+- Expose the API port publicly; it binds to 127.0.0.1 by design. The only public path is the overview page through Traefik with basic auth (owner-approved 2026-11-16), and only the pages (`/`, `/sessions`) and their `/api/` data are routed.
