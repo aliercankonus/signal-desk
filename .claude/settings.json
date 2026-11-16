@@ -17,5 +17,7 @@
       "Read(./data/**)",
       "Read(./.env)"
     ]
-  }
+  },
+  "autoCompactEnabled": true,
+  "autoCompactWindow": 150000
 }

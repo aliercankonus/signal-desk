@@ -34,11 +34,18 @@ Use the smallest model that can do the job.
 | Running tests and summarising failures | `test-runner` subagent (Haiku) |
 | Small fixes, deploys, config changes, docs | Main session on a mid-size model (Sonnet) |
 | Architecture, research design, strategy evaluation, safety reviews | Main session on the largest model (Opus) |
+| `to-tickets` (planning work into issues) | Main session on the largest model |
+| `handoff`, `verification-before-completion` checks | Any model; run the checks through `test-runner` / `vps-status` |
 
 - Delegate to the Haiku subagents when the work produces long output (metrics, logs, test runs): only their short summary enters the main context.
 - Don't delegate small lookups: starting a subagent has its own overhead. A single `grep` or one API call is cheaper inline.
 - Effectful VPS actions (deploy, stop, firewall changes) stay in the main session so the owner sees and approves them.
 - The main session's model is chosen by the owner in the model picker. If a session is clearly routine, suggest switching to Sonnet; if it turns into design or research, suggest Opus.
+
+## Compaction
+- Auto-compaction is on in `.claude/settings.json` with `autoCompactWindow: 150000`, so long sessions are summarised before the context gets large.
+- Prefer finishing a task and starting a new session over relying on compaction: run `handoff`, then start fresh.
+- Compact manually (`/compact`) at a natural break (after a PR is opened, before switching sub-task), not mid-debugging.
 
 ## Keep the always-loaded context small
 - `CLAUDE.md` stays under ~40 lines. Move detail into skills, which load only when used.
