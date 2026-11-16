@@ -179,3 +179,32 @@ that core and forward paper evidence are validated, report prediction
 coverage/direction diagnostics only—**no strategy PnL, economic winner,
 profitability claim or real orders**. Exchange fees are unknown here, not
 invented. Time Machine remains a separate feature.
+
+## Trades-only early check (`trades_only_v1.json`)
+
+**Predeclared, not executed.** [`trades_only_v1.json`](trades_only_v1.json) was
+committed before any code or data. It tests the trade-flow part of S1 on Binance's
+free historical BTCUSDT spot trade files (no order book, so no micro-price):
+30s signed aggressor quantity ratio, 60s momentum, and no-change. It uses 60s and
+300s horizons, a long/flat rule over a 12-configuration grid, and the fixed UTC
+window 2026-08-01 → 2026-09-30, split 36/12/12 days with a 360s purge/embargo.
+Costs are 0.10%/side plus 2bp/side adverse price. **Caveat:** there is no
+bid/ask, so book side is approximated from the last trade plus a fixed
+half-spread and slippage.
+
+Run it on a research machine, never on the VPS:
+
+```bash
+PYTHONPATH=src python -m signal_desk.research.binance_trades_download \
+  --start 2026-08-01 --end 2026-09-30 --out-dir /path/to/binance-trades
+PYTHONPATH=src python -m signal_desk.research.trades_only --phase validation \
+  --spec docs/research/trades_only_v1.json --data-dir /path/to/binance-trades \
+  --output /path/to/trades_only_validation.json
+# Once only. A marker file in --data-dir blocks a second test run.
+PYTHONPATH=src python -m signal_desk.research.trades_only --phase test \
+  --spec docs/research/trades_only_v1.json --data-dir /path/to/binance-trades \
+  --selection /path/to/trades_only_validation.json --output /path/to/trades_only_test.json
+```
+
+Each zip is kept only if its SHA-256 matches Binance's `.CHECKSUM`, and the
+runner checks it again before use. The validation phase never loads test days.
