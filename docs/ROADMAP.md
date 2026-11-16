@@ -17,7 +17,7 @@ Status (2026-11-16):
 - [x] Old Hermes/ChatGPT credentials: owner reviewed and chose to leave them as is (VPS reinstalled, token files gone, no SSH keys on the VPS or account)
 - [x] Firewall: inbound TCP 22, 80, 443 only (Hostinger firewall, synced and active)
 - [x] Deployed with `vps_docker_create`; api healthy (127.0.0.1:8080 only), collector running
-- [x] Collector stream buffer raised 256 -> 4096 (#4) after early overflow resyncs; after redeploy: 0 gaps, peak queue 1012, one stale-feed reconnect in the first 5 min
+- [x] Collector stream buffer raised 256 -> 4096 (#4) after early overflow resyncs; after redeploy: 0 gaps, peak queue 1012; the remaining reconnects were the trade-lull bug fixed in #9
 
 **Gate met** (API and collector running, health ok). Owner approved moving to Phase 1.
 
@@ -25,6 +25,15 @@ Status (2026-11-16):
 - Collector runs in continuous mode; daily check of status, gaps, reconnects and disk use.
 - Add raw-file retention/compression before the 30 GB raw quota is reached.
 - **Gate:** at least 14 days of gap-free sessions with a clean raw audit.
+
+Status (2026-11-16):
+- [x] Collector reconnect loop fixed (#9). It reconnected about every 2 min ("Timed out waiting for market data") because a 3 s lull in trades triggered a full resync even while depth was fresh. The session now only resyncs after a 60 s trade outage, and stale feeds report their real reason. `stale_trades_ms` (3 s) still governs feature validity. Redeployed 11:29 UTC; 0 reconnects in the first 4 min (the old build had ~2 by then).
+- [x] Daily read-only VPS check scheduled at 07:23 UTC in a dedicated cloud session.
+- [x] Allow rules for the Hostinger tools in `.claude/settings.json`, under both tool names (`mcp__hostinger__*` and the connector-ID form used in cloud sessions) (#3, #7, #8). The `vps-status` agent now works in cloud sessions.
+- [ ] Owner: set the Hostinger connector's Execute and Multi-execute tools to "Always allow" (claude.ai, Connectors). Until then the connector's own policy asks for approval on every `execute` call, and repo allow rules can't override it.
+- [ ] Confirm overnight stability from the first daily check: reconnect_count near zero, gap_count 0.
+- [ ] Hostinger VM metrics (CPU/RAM/disk) return empty so far, so disk use can't be watched yet. Recheck; if still empty, add a disk check another way.
+- [ ] **Urgent:** raw-file retention/compression. Raw data grows about 3.6 MB/min (~5 GB/day; raw_bytes 4.1 MB at 10:42, 129.5 MB at 11:15 UTC), so the 30 GB raw quota would HALT the collector around 2026-11-22, before the 14-day gate. Confirm the rate in the daily checks.
 
 ## Phase 2 — Research: does S1 beat costs?
 - Run the predeclared S1 experiment (`docs/research/s1_experiment_v1.json`) offline on collected data.
