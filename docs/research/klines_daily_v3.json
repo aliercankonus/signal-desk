@@ -1,0 +1,75 @@
+{
+  "experiment_version": "klines-daily-btcusdt-spot-v3",
+  "review_status": "predeclared_not_executed",
+  "supersedes": "trades-only-btcusdt-spot-v2 (FAIL at validation; test window unused). New hypothesis, not a retune: intraday taker trading showed about 0 bp gross edge against about 24 bp round-trip cost.",
+  "hypothesis": "Simple daily long/flat rules on BTCUSDT (trend, momentum, breakout, mean reversion) earn a better risk-adjusted return than buy-and-hold after full costs, because each trade spans days to months and costs are small relative to the move.",
+  "symbol": "BTCUSDT",
+  "venue": "binance_spot",
+  "position_scope": "long or flat, fully invested when long, no leverage, no shorting, paper research only",
+  "data_source": {
+    "files": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-YYYY-MM.zip",
+    "checksum": "every zip verified against its .CHECKSUM (sha256) before use",
+    "months": "2017-08 to 2026-10",
+    "columns_used": "open_time, open, close",
+    "timestamp_unit": "milliseconds before 2025, microseconds from 2025; the runner normalises to UTC days",
+    "gaps": "a missing day inside a segment is an error, not filled"
+  },
+  "window_utc": {"start": "2018-01-01", "validation_start": "2022-01-01", "test_start": "2024-01-01", "end": "2026-11-01"},
+  "clock": {
+    "signal": "computed from daily closes up to and including day d-1",
+    "execution": "position for day d is taken at the open of day d",
+    "daily_return": "open(d+1) / open(d) - 1 while long, 0 while flat",
+    "warmup": "features may use closes before a segment start (past data only); 2017-08 to 2017-12 is warm-up only"
+  },
+  "configurations": [
+    {"family": "sma_trend", "rule": "long while close > simple moving average of the last N closes", "N": [20, 50, 100, 200]},
+    {"family": "momentum", "rule": "long while close / close L days earlier - 1 > 0", "L": [7, 30, 90, 180]},
+    {"family": "donchian", "rule": "enter when close > max of the previous N closes; exit when close < min of the previous floor(N/2) closes", "N": [20, 55, 100]},
+    {"family": "mean_reversion", "rule": "enter when close / previous close - 1 <= -X; hold H days, then flat; a new trigger while long restarts the H-day count", "X": [0.05, 0.10], "H": [1, 3]}
+  ],
+  "configuration_count": 15,
+  "parameter_searches_beyond_this_grid": "none; any new rule or parameter is a new spec version",
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "adverse_price_per_side": 0.0002,
+    "cost_per_side": 0.0012,
+    "applied": "equity is multiplied by (1 - 0.0012) on every entry and every exit",
+    "fee_sensitivity_info_only": "same results with fee 0.00075/side are reported but never used for selection or pass/fail"
+  },
+  "chronological_split": {
+    "segments": "train [start, validation_start), validation [validation_start, test_start), test [test_start, end)",
+    "no_cross_segment_positions": "every segment starts flat and any open position is closed at the segment end (the open of the first day after it), with exit cost",
+    "embargo_days_after_each_boundary": 1,
+    "embargo_rule": "no entry on the first day of validation or test; signals may use earlier closes"
+  },
+  "metrics": ["total net return (compounded)", "CAGR", "annualised Sharpe of daily net returns (mean/std * sqrt(365))", "max drawdown of the equity curve", "round trips", "exposure (fraction of days long)"],
+  "selection": {
+    "on": "validation only",
+    "metric": "annualised Sharpe of daily net returns",
+    "min_validation_round_trips": 4,
+    "tie_break": "higher validation total net return, then configuration order above",
+    "gate_to_run_test": "the selected configuration must have validation total net return > 0 and validation Sharpe > buy-and-hold validation Sharpe; otherwise verdict fail and the test is not run",
+    "report_all_configurations": "all 15 train and validation results are reported"
+  },
+  "baselines": ["buy_and_hold (enter at the segment's first open, exit at its end, with costs)", "cash (0 return)"],
+  "test_evaluation": {
+    "runs": 1,
+    "evaluates": "the single validation-selected configuration plus baselines on the test segment",
+    "enforcement": "runner refuses a second test run (exclusive marker file next to the data)"
+  },
+  "pass_criteria": {
+    "all_required": [
+      "test total net return > 0",
+      "test Sharpe > buy-and-hold test Sharpe",
+      "test max drawdown < buy-and-hold test max drawdown",
+      "test round trips >= 5"
+    ],
+    "otherwise": "fail; report it and stop this hypothesis"
+  },
+  "known_limits": [
+    "Daily data gives few independent trades; even a pass is weak statistical evidence.",
+    "The researcher's prior knowledge of BTC price history (2018-2026) is outside contamination that no split can remove.",
+    "Next-open fills ignore slippage beyond the 2 bp/side adjustment; fine for BTCUSDT spot at research size, not proof of live capacity.",
+    "A pass is not a profitability claim for live trading; it only says the rule beat buy-and-hold on one out-of-sample period."
+  ]
+}
