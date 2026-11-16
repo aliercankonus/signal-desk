@@ -6,7 +6,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import sys
 from pathlib import Path
 
+from signal_desk.api.overview import build_overview
 from signal_desk.config.loader import ConfigError, validate_config
+
+OVERVIEW_PAGE = Path(__file__).with_name("static") / "overview.html"
 
 
 def build_status(config_path: str) -> tuple[int, dict]:
@@ -34,20 +37,42 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def _send(self, code: int, payload: dict) -> None:
         raw = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+        self._send_raw(code, raw, "application/json")
+
+    def _send_raw(self, code: int, raw: bytes, content_type: str) -> None:
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(raw)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path not in ("/", "/health", "/ready"):
+        path = self.path.split("?", 1)[0]
+        if path == "/":
+            self._send_raw(200, OVERVIEW_PAGE.read_bytes(), "text/html; charset=utf-8")
+            return
+        if path == "/api/status":
+            self._api_status()
+            return
+        if path not in ("/health", "/ready"):
             self._send(404, {"error": "not_found"})
             return
         if HealthHandler.cached_status is None:
             HealthHandler.cached_status = build_status(self.config_path)
         code, status = HealthHandler.cached_status
         self._send(code, status)
+
+    def _api_status(self) -> None:
+        try:
+            config = validate_config(self.config_path)
+            payload = build_overview(config)
+        except Exception as exc:  # detail goes to the server log, never to clients
+            print(f"health_server overview failed: {exc}", file=sys.stderr, flush=True)
+            self._send(503, {"error": "overview_unavailable"})
+            return
+        self._send(200, payload)
 
     def log_message(self, fmt: str, *args) -> None:  # reduce noisy default logs
         return

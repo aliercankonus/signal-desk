@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>signal-desk · overview</title>
+<style>
+:root {
+  --bg: #0e1116; --panel: #161b22; --inset: #0e1116; --line: #262c36; --text: #e6edf3;
+  --muted: #a8b3c2; --faint: #8b96a5; --accent: #79b8ff; --ok: #56d364; --warn: #f0b429; --bad: #ff7b72;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: #12161d; border-bottom: 1px solid var(--line); }
+.wrap { max-width: 1360px; margin: 0 auto; padding: 14px 16px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.chip { font: 12px var(--mono); color: var(--muted); border: 1px solid #2e3541; border-radius: 6px; padding: 4px 8px; }
+.chip.paper { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.chip.danger { color: var(--bg); background: var(--bad); border-color: var(--bad); font-weight: 600; }
+.updated { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+#alert { display: none; background: #3a1416; border-bottom: 1px solid var(--bad); color: #ffd8d3; }
+#alert.on { display: block; }
+main { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; }
+h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; }
+.main { flex: 999 1 600px; min-width: 0; }
+.side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.big { font: 600 28px var(--mono); }
+.big small { font: 14px system-ui, sans-serif; color: var(--muted); margin-left: 6px; }
+.track { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.fill { height: 100%; background: var(--accent); width: 0; }
+.note { font-size: 13px; color: var(--muted); }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pill { font: 600 12px var(--mono); color: var(--bg); border-radius: 999px; padding: 4px 10px; background: var(--faint); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.metric { background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.metric .k { font: 11px var(--mono); color: var(--muted); }
+.metric .v { font: 600 19px var(--mono); overflow-wrap: anywhere; }
+.metric .h { font-size: 12px; color: var(--faint); }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13px; }
+dt { color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
+.alarm { display: flex; gap: 10px; align-items: flex-start; }
+.tag { font: 600 11px var(--mono); color: var(--bg); border-radius: 4px; padding: 2px 6px; flex-shrink: 0; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.days { display: flex; flex-wrap: wrap; gap: 4px; }
+.day { width: 14px; height: 14px; border-radius: 3px; background: var(--ok); }
+.day.pinned { outline: 2px solid #d2a8ff; outline-offset: 1px; }
+.day.today { background: transparent; border: 1px solid var(--accent); }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+#error { display: none; color: var(--bad); font: 12px var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <span class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>signal-desk</span>
+    <span class="chip" id="venue">…</span>
+    <span class="chip paper" id="mode">…</span>
+    <span class="chip">Phase 1 · Data collection</span>
+    <span class="updated" id="updated">loading…</span>
+  </div>
+</header>
+<div id="alert" role="alert"><div class="wrap"><strong class="mono">COLLECTOR HALT</strong> <span id="alert-text"></span> Restart is "no" by design: investigate before restarting.</div></div>
+
+<main>
+  <div class="bar">
+    <h1>Is the data clean, and how close is the next gate?</h1>
+    <span id="error" role="status"></span>
+  </div>
+
+  <section class="grid3" aria-label="Gates">
+    <div class="card">
+      <span class="label">Phase 1 gate · days with data</span>
+      <span class="big" id="g1">–<small>/ 14</small></span>
+      <div class="track"><div class="fill" id="g1-bar"></div></div>
+      <span class="note">Gate needs 14 gap-free days with a clean raw audit. Audit results are not in the API yet, so this counts days with raw files.</span>
+    </div>
+    <div class="card">
+      <span class="label">S1 research window</span>
+      <span class="big" id="g2">–<small>/ 60 days</small></span>
+      <div class="track"><div class="fill" id="g2-bar"></div></div>
+      <span class="note" id="g2-note">36 / 12 / 12 split</span>
+    </div>
+    <div class="card">
+      <span class="label">Raw pool</span>
+      <span class="big" id="g3">–</span>
+      <div class="track"><div class="fill" id="g3-bar" style="background: var(--ok)"></div></div>
+      <span class="note" id="g3-note"></span>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="card main">
+      <div class="head">
+        <h2>Collector</h2>
+        <span class="pill" id="state">…</span>
+        <span class="mono" style="color: var(--muted)" id="reason"></span>
+        <span style="margin-left: auto; font-size: 12px; color: var(--muted)">health: <strong id="health">…</strong></span>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2>Alarms</h2>
+        <div id="alarms" style="display: flex; flex-direction: column; gap: 10px"></div>
+      </div>
+      <div class="card">
+        <h2>Disk (/data filesystem)</h2>
+        <dl id="disk"></dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="card main">
+      <h2>Raw days on disk</h2>
+      <div class="days" id="days" aria-label="Raw days"></div>
+      <dl id="raw"></dl>
+    </div>
+    <div class="side">
+      <div class="card">
+        <h2>Config</h2>
+        <dl id="config"></dl>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const fmtInt = (n) => (n === undefined || n === null) ? "–" : Number(n).toLocaleString("en-US");
+const fmtBytes = (b) => {
+  if (b === undefined || b === null) return "–";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; let v = b;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + " " + u[i];
+};
+const pct = (a, b) => (b ? Math.min(100, Math.max(0, a / b * 100)) : 0);
+const STATE_COLOR = { RUNNING: "var(--ok)", SYNCING: "var(--accent)", CONNECTING: "var(--accent)",
+  RESYNCING: "var(--warn)", HALT: "var(--bad)", ERROR: "var(--bad)", STOPPED: "var(--bad)" };
+const SEV_COLOR = { HALT: "var(--bad)", BLOCK: "var(--warn)", WARN: "var(--warn)" };
+
+function el(tag, attrs, text) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function fillDl(id, rows) {
+  const dl = $(id); dl.replaceChildren();
+  for (const [k, v] of rows) { dl.append(el("dt", {}, k), el("dd", {}, v)); }
+}
+function setBig(id, value, suffix) {
+  const node = $(id); node.replaceChildren(document.createTextNode(value));
+  if (suffix) node.append(el("small", {}, suffix));
+}
+
+function render(d) {
+  const p = d.project, c = d.collector, r = d.raw, g = d.gates, disk = d.disk;
+  $("venue").textContent = `${p.venue} · ${p.symbol} · ${p.product_type}`;
+  const paper = p.mode === "paper" && p.execution_enabled === false;
+  $("mode").textContent = paper ? "PAPER · execution_enabled=false" : `MODE ${p.mode} · execution_enabled=${p.execution_enabled}`;
+  $("mode").className = "chip " + (paper ? "paper" : "danger");
+
+  setBig("g1", String(g.days_with_data), "/ " + g.phase1_required_days);
+  $("g1-bar").style.width = pct(g.days_with_data, g.phase1_required_days) + "%";
+  setBig("g2", String(g.days_with_data), "/ " + g.s1_window_days + " days");
+  $("g2-bar").style.width = pct(g.days_with_data, g.s1_window_days) + "%";
+  if (r.first_day) {
+    const eta = new Date(r.first_day + "T00:00:00Z"); eta.setUTCDate(eta.getUTCDate() + g.s1_window_days);
+    $("g2-note").textContent = `36 / 12 / 12 split · earliest full run ~${eta.toISOString().slice(0, 10)} if every day stays clean`;
+  }
+  setBig("g3", fmtBytes(r.bytes), "/ " + fmtBytes(r.pool_bytes));
+  $("g3-bar").style.width = pct(r.bytes, r.pool_bytes) + "%";
+  $("g3-note").textContent = `raw quota HALT at the pool limit · ${r.keep_days}-day retention`;
+
+  const state = c.status || "UNKNOWN";
+  $("state").textContent = state;
+  $("state").style.background = STATE_COLOR[state] || "var(--faint)";
+  $("reason").textContent = c.reason || "";
+  $("health").textContent = c.healthy ? "healthy" : "unhealthy";
+  $("health").className = c.healthy ? "ok" : "bad";
+  $("health").title = c.health_reason;
+  $("alert").classList.toggle("on", state === "HALT");
+  $("alert-text").textContent = c.reason ? `reason: ${c.reason}.` : "";
+
+  const metrics = [
+    ["status_age", c.status_age_seconds === null ? "–" : c.status_age_seconds + " s", "unhealthy > 120 s", c.status_age_seconds > 120 ? "bad" : ""],
+    ["gap_count", fmtInt(c.gap_count), "order-book gaps (this run)", c.gap_count > 0 ? "warn" : ""],
+    ["reconnect_count", fmtInt(c.reconnect_count), "this run", c.reconnect_count > 0 ? "warn" : ""],
+    ["consecutive_failures", fmtInt(c.consecutive_failures), c.max_failures ? `HALT at ${c.max_failures}` : "", c.consecutive_failures > 0 ? "warn" : ""],
+    ["synchronized", c.session_synchronized === undefined ? "–" : String(c.session_synchronized), "order book in sync", c.session_synchronized === false ? "warn" : ""],
+    ["total_depth_events", fmtInt(c.total_depth_events), "since collector start", ""],
+    ["total_trade_events", fmtInt(c.total_trade_events), "since collector start", ""],
+    ["session_events", fmtInt(c.written_events), "current WS session", ""],
+  ];
+  if (c.retry_in_seconds !== undefined && state === "RESYNCING") metrics.push(["retry_in", c.retry_in_seconds + " s", "next resync attempt", "warn"]);
+  if (c.last_compaction_error) metrics.push(["compaction_error", c.last_compaction_error, "compression failed", "bad"]);
+  const box = $("metrics"); box.replaceChildren();
+  for (const [k, v, h, tone] of metrics) {
+    const m = el("div", { class: "metric" });
+    m.append(el("span", { class: "k" }, k), el("span", { class: "v " + tone }, v), el("span", { class: "h" }, h));
+    box.append(m);
+  }
+
+  const alarms = $("alarms"); alarms.replaceChildren();
+  const list = d.alarms.slice();
+  if (!c.healthy) list.unshift({ severity: state === "HALT" ? "HALT" : "WARN", code: "COLLECTOR_UNHEALTHY", action: "INVESTIGATE", message: c.health_reason });
+  if (!list.length) list.push({ severity: "OK", code: "no active alarms", action: "none", message: "disk below warn threshold, collector healthy" });
+  for (const a of list) {
+    const row = el("div", { class: "alarm" });
+    const tag = el("span", { class: "tag" }, a.severity); tag.style.background = SEV_COLOR[a.severity] || "var(--ok)";
+    const body = el("div", { style: "display:flex;flex-direction:column;gap:2px;min-width:0" });
+    body.append(el("span", { class: "mono" }, `${a.code} → ${a.action}`), el("span", { class: "note", style: "font-size:12px;overflow-wrap:anywhere" }, a.message || ""));
+    row.append(tag, body); alarms.append(row);
+  }
+
+  const t = d.alarm_thresholds;
+  fillDl("disk", [
+    ["used", disk.used_pct === null ? "–" : `${disk.used_pct}%`],
+    ["used / total", `${fmtBytes(disk.used_bytes)} / ${fmtBytes(disk.total_bytes)}`],
+    ["warn · block · halt", `${t.disk_warn_pct}% · ${t.disk_enter_block_pct}% · ${t.disk_halt_pct}%`],
+  ]);
+
+  const today = d.generated_ts.slice(0, 10);
+  const days = $("days"); days.replaceChildren();
+  for (const day of r.days) {
+    const cls = "day" + (day === today ? " today" : "") + (r.pinned_days.includes(day) ? " pinned" : "");
+    days.append(el("span", { class: cls, title: day + (day === today ? " (open)" : ""), role: "img", "aria-label": day }));
+  }
+  if (!r.days.length) days.append(el("span", { class: "note" }, "no raw day files yet"));
+  fillDl("raw", [
+    ["first day", r.first_day || "–"],
+    ["days on disk", String(r.days_count)],
+    ["pinned", r.pinned_days.length ? r.pinned_days.join(", ") : "none"],
+    ["next expiry", r.next_expiry_day || "–"],
+  ]);
+
+  fillDl("config", [
+    ["config_version", p.config_version],
+    ["session_id", c.session_id ? c.session_id.slice(0, 12) + "…" : "–"],
+    ["status ts", c.ts ? c.ts.slice(0, 19).replace("T", " ") + " UTC" : "–"],
+  ]);
+
+  $("updated").textContent = "updated " + d.generated_ts.slice(11, 19) + " UTC · every 5 s";
+}
+
+async function tick() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    render(await res.json());
+    $("error").style.display = "none";
+  } catch (err) {
+    $("error").textContent = "API unreachable: " + err.message + " (showing last data)";
+    $("error").style.display = "inline";
+  }
+}
+tick();
+setInterval(tick, 5000);
+</script>
+</body>
+</html>
