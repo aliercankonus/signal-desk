@@ -1,7 +1,7 @@
 """Opt-in continuous public-data collector; never an execution service."""
 import asyncio
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import fcntl
 import json
 import math
@@ -39,6 +39,11 @@ class StorageGuard:
         self.disk_halt = float(config["alarms"]["disk_halt_pct"])
         if self.limit <= 0 or not 0 < self.disk_halt <= 100:
             raise ValueError("Invalid raw quota or disk HALT threshold")
+        retention = config["retention"]
+        self.keep_days = retention["raw_target_days"]
+        if not isinstance(self.keep_days, int) or self.keep_days < compact.MIN_KEEP_DAYS:
+            raise ValueError(f"retention.raw_target_days must be an integer >= {compact.MIN_KEEP_DAYS}")
+        self.pinned = frozenset(date.fromisoformat(str(d)) for d in retention.get("raw_pinned_days") or [])
         # One startup inventory; no full history scan in the event path.
         self.used = sum(f.stat().st_size for f in self.raw.rglob("*") if f.is_file())
         self._lock = threading.Lock()  # writes and compaction update `used` from different threads
@@ -139,15 +144,22 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
         guard = config["_storage_guard"]
         while True:
             try:
+                today = datetime.now(timezone.utc).date()
                 files, saved = await asyncio.to_thread(
-                    compact.compress_closed_days, guard.raw, datetime.now(timezone.utc).date(),
-                    pause=COMPACT_PAUSE_SECONDS)
+                    compact.compress_closed_days, guard.raw, today, pause=COMPACT_PAUSE_SECONDS)
                 if files:
                     guard.release(saved)
                     runtime["raw_bytes"] = guard.used
                     runtime["compacted_bytes_saved"] = runtime.get("compacted_bytes_saved", 0) + saved
                     print(json.dumps({"status": "COMPACTED", "files": files, "saved_bytes": saved,
                                       "raw_bytes": guard.used}), flush=True)
+                files, freed = await asyncio.to_thread(
+                    compact.delete_expired_days, guard.raw, today, guard.keep_days, guard.pinned)
+                if files:
+                    guard.release(freed)
+                    runtime["raw_bytes"] = guard.used
+                    print(json.dumps({"status": "RETENTION", "deleted_files": files, "freed_bytes": freed,
+                                      "keep_days": guard.keep_days, "raw_bytes": guard.used}), flush=True)
                 runtime.pop("last_compaction_error", None)
             except asyncio.CancelledError:
                 raise
