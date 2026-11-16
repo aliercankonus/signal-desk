@@ -24,7 +24,7 @@ from signal_desk.schemas.validate import SchemaValidationError
 def capture(tmp_path, monkeypatch):
     raw = tmp_path / "raw"
     raw.mkdir()
-    config = {"storage": {"raw_path": str(raw)}, "exchange": {"symbol": "BTCUSDT"}}
+    config = {"storage": {"raw_path": str(raw)}, "venue": {"symbol": "BTCUSDT"}}
     applied = {"index": 0, "ns": 1_000_000, "at": "2026-10-28T00:00:00Z"}
     base = datetime(2026, 10, 28, tzinfo=timezone.utc)
     online = []
@@ -337,7 +337,7 @@ def test_actual_stream_buffer_capture_replays_in_application_order(tmp_path, mon
             await asyncio.Event().wait()
     async def snapshot(*args, **kwargs):
         return {"lastUpdateId": 10, "bids": [["100", "2"]], "asks": [["102", "1"]]}
-    config = {"exchange": {"symbol": "BTCUSDT", "endpoints": {"rest_base_url": "unused"},
+    config = {"venue": {"symbol": "BTCUSDT", "endpoints": {"rest_base_url": "unused"},
                            "market_data": {"snapshot_limit": 5000}},
               "storage": {"raw_path": str(tmp_path / "raw")}}
     monkeypatch.setattr(collector, "fetch_snapshot_async", snapshot)

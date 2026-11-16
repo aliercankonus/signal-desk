@@ -44,7 +44,7 @@ def generate_eod_report(config: dict, *, date: str, revision: int = 1) -> dict:
     report_base = {
         "date": date,
         "revision": revision,
-        "symbol": config["exchange"]["symbol"],
+        "symbol": config["venue"]["symbol"],
         "counts": {"raw_events": raw_count, "features": feature_count, "ledger_entries": ledger_count},
     }
     report_id = "eod_" + hashlib.sha256(json.dumps(report_base, sort_keys=True).encode()).hexdigest()[:20]
@@ -52,7 +52,7 @@ def generate_eod_report(config: dict, *, date: str, revision: int = 1) -> dict:
         "report_id": report_id,
         "date": date,
         "revision": revision,
-        "symbol": config["exchange"]["symbol"],
+        "symbol": config["venue"]["symbol"],
         "summary": {
             "mode": config["project"]["mode"],
             "execution_enabled": config["project"]["execution_enabled"],

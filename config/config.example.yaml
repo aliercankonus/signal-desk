@@ -1,12 +1,13 @@
 project:
-  name: signal-desk-prediction
+  name: signal-desk
   version: v16
   mode: paper
   execution_enabled: false
   config_version: cfg-v16-example-001
 
-exchange:
+venue:
   name: binance
+  asset_class: crypto
   product_type: spot
   symbol: BTCUSDT
   quote_asset: USDT

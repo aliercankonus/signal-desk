@@ -4,7 +4,7 @@
   "type": "object",
   "required": [
     "project",
-    "exchange",
+    "venue",
     "fees",
     "resources",
     "storage",
@@ -38,25 +38,6 @@
         },
         "config_version": {
           "type": "string"
-        }
-      }
-    },
-    "exchange": {
-      "type": "object",
-      "required": [
-        "name",
-        "product_type",
-        "symbol"
-      ],
-      "properties": {
-        "name": {
-          "const": "binance"
-        },
-        "product_type": {
-          "const": "spot"
-        },
-        "symbol": {
-          "const": "BTCUSDT"
         }
       }
     },
@@ -145,7 +126,33 @@
           "maximum": 60
         }
       }
+    },
+    "venue": {
+      "type": "object",
+      "required": [
+        "name",
+        "asset_class",
+        "product_type",
+        "symbol"
+      ],
+      "properties": {
+        "name": {
+          "const": "binance"
+        },
+        "product_type": {
+          "const": "spot"
+        },
+        "symbol": {
+          "const": "BTCUSDT"
+        },
+        "asset_class": {
+          "type": "string",
+          "enum": [
+            "crypto",
+            "stock"
+          ]
+        }
+      }
     }
   }
 }
-

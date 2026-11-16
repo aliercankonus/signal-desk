@@ -1,5 +1,7 @@
 # Roadmap
 
+Markets are pluggable: each venue (crypto exchange or stock broker) is registered in `src/signal_desk/venues/` and produces the same normalized market events. Crypto (Binance BTCUSDT) goes first because its data is free and it trades 24/7, which gives the fastest answer to "is there an edge?".
+
 Each phase has an exit gate. Do not start the next phase until the gate is met and the owner agrees.
 
 ## Phase 0 — Clean start (current)
@@ -25,3 +27,9 @@ Each phase has an exit gate. Do not start the next phase until the gate is met a
 
 ## Phase 4 — Small real-money pilot (only with explicit owner approval)
 - Separate design review against `.claude/skills/trading-safety`. Hard per-trade and daily limits, kill switch, no AI in the order path.
+
+## Phase 5 — Stocks (after Phase 2 has a result on crypto)
+- Choose a broker with a free paper-trading API available in the owner's country (candidates: Alpaca, Interactive Brokers). Confirm data licensing and what real-time data is free.
+- Implement a stock venue: collector for its data feed, mapping to `schemas/market_event.schema.json`, market-hours handling (closed markets are normal, not a failure), register it in `venues/`, tests.
+- Expect a different strategy horizon: daily or multi-day signals are more realistic than minute-level order flow for a small account. US day trading needs $25k+ (pattern day trader rule).
+- Same gates as crypto: Phase 1 data → Phase 2 research gate → Phase 3 paper → Phase 4 pilot.

@@ -20,8 +20,9 @@ def build_status(config_path: str) -> tuple[int, dict]:
         "ready_for_enter": False,
         "mode": config["project"]["mode"],
         "execution_enabled": config["project"]["execution_enabled"],
-        "exchange": config["exchange"]["name"],
-        "symbol": config["exchange"]["symbol"],
+        "venue": config["venue"]["name"],
+        "asset_class": config["venue"]["asset_class"],
+        "symbol": config["venue"]["symbol"],
         "config_version": config["project"]["config_version"],
         "notes": ["paper-only skeleton", "real orders disabled"],
     }

@@ -47,7 +47,7 @@ def main() -> int:
     parser.add_argument("--config", default="config/config.yaml")
     args = parser.parse_args()
     config = validate_config(args.config)
-    stats = replay_events(args.input, args.output, symbol=config["exchange"]["symbol"])
+    stats = replay_events(args.input, args.output, symbol=config["venue"]["symbol"])
     print(json.dumps(stats, sort_keys=True))
     return 0
 

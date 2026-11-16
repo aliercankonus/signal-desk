@@ -49,7 +49,7 @@ class FakeSocket:
 
 def setup(monkeypatch, ws, snapshots):
     config = {
-        "exchange": {
+        "venue": {
             "symbol": "BTCUSDT",
             "endpoints": {"rest_base_url": "https://example.test", "ws_base_url": "wss://example.test"},
             "market_data": {"snapshot_limit": 5000, "depth_stream": "btcusdt@depth", "trade_stream": "btcusdt@trade"},
@@ -189,7 +189,7 @@ def test_depth_staleness_is_not_masked_by_trades(monkeypatch):
 
     ws = TradeOnlyAfterBridge([depth(99, 100), depth(106, 107)])
     writes, statuses, _, _ = setup(monkeypatch, ws, [105])
-    collector.validate_config("unused")["exchange"]["market_data"]["stale_l2_ms"] = 10
+    collector.validate_config("unused")["venue"]["market_data"]["stale_l2_ms"] = 10
     assert asyncio.run(collector.run_stream_async("unused", max_events=100000)) == 2
     assert any(e["event_type"] == "trade" for e in writes)
     assert statuses[-1][0] == "RESYNCING"

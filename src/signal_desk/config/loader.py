@@ -56,13 +56,16 @@ def validate_config(config_path: str | Path = DEFAULT_CONFIG_PATH, schema_path: 
 
 def _validate_operational_invariants(config: dict[str, Any]) -> None:
     project = config.get("project", {})
-    exchange = config.get("exchange", {})
+    venue = config.get("venue", {})
     if project.get("execution_enabled") is not False:
         raise ConfigError("V0 must run with execution_enabled=false")
     if project.get("mode") != "paper":
         raise ConfigError("V0 must run in project.mode=paper")
-    if exchange.get("name") != "binance" or exchange.get("symbol") != "BTCUSDT" or exchange.get("product_type") != "spot":
-        raise ConfigError("V0 is fixed to Binance BTCUSDT spot")
+    from signal_desk.venues import UnsupportedVenue, resolve
+    try:
+        resolve(venue)
+    except UnsupportedVenue as exc:
+        raise ConfigError(str(exc)) from exc
     fees = config.get("fees", {})
     if fees.get("source") == "manual_placeholder_verify_before_run":
         # Allow tests and skeleton, but health status will show BLOCK for ENTER.

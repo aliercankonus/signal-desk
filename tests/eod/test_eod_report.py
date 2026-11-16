@@ -7,7 +7,7 @@ from signal_desk.storage.jsonl import append_jsonl
 def test_eod_report_counts_runtime_files(tmp_path: Path):
     config = {
         "project": {"mode": "paper", "execution_enabled": False},
-        "exchange": {"symbol": "BTCUSDT"},
+        "venue": {"symbol": "BTCUSDT"},
         "storage": {
             "base_path": str(tmp_path),
             "raw_path": str(tmp_path / "raw"),

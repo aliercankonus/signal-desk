@@ -37,7 +37,7 @@ def write_status(config: dict, status: str, reason: str | None = None, **extra: 
     payload = {
         "status": status,
         "reason": reason,
-        "symbol": config["exchange"]["symbol"],
+        "symbol": config["venue"]["symbol"],
         "mode": config["project"]["mode"],
         "execution_enabled": config["project"]["execution_enabled"],
         "ts": utc_now_iso(),
@@ -50,7 +50,7 @@ def write_status(config: dict, status: str, reason: str | None = None, **extra: 
 
 
 def raw_file(config: dict, suffix: str) -> Path:
-    symbol = config["exchange"]["symbol"].lower()
+    symbol = config["venue"]["symbol"].lower()
     day = utc_now_iso()[:10]
     return Path(config["storage"]["raw_path"]) / f"binance_{symbol}_{suffix}_{day}.jsonl"
 
@@ -65,7 +65,7 @@ def write_event(config: dict, event: dict) -> None:
     runtime = config.get("_collector_runtime")
     if event["event_type"] == "book_snapshot":
         session_id = runtime["session_id"] if runtime is not None else uuid.uuid4().hex
-        market = config.get("exchange", {}).get("market_data", {})
+        market = config.get("venue", {}).get("market_data", {})
         policy = feature_policy(stale_l2_ms=market.get("stale_l2_ms", 2000),
                                 stale_trades_ms=market.get("stale_trades_ms", 3000))
         config["_capture_features"] = CausalFeaturePipeline(session_id, policy)
@@ -109,7 +109,7 @@ def write_event(config: dict, event: dict) -> None:
 
 def run_once(config_path: str) -> int:
     config = validate_config(config_path)
-    ex = config["exchange"]
+    ex = config["venue"]
     snapshot = fetch_depth_snapshot(ex["endpoints"]["rest_base_url"], ex["symbol"], int(ex["market_data"]["snapshot_limit"]))
     event = map_snapshot(snapshot, symbol=ex["symbol"], raw_stream="rest_depth_snapshot")
     write_event(config, event)
@@ -120,7 +120,7 @@ def run_once(config_path: str) -> int:
 
 
 def stream_url(config: dict) -> str:
-    ex = config["exchange"]
+    ex = config["venue"]
     streams = [ex["market_data"]["depth_stream"], ex["market_data"]["trade_stream"]]
     base = ex["endpoints"]["ws_base_url"].rstrip("/")
     return f"{base}/stream?streams={'/'.join(streams)}"
@@ -178,7 +178,7 @@ async def collect_connected_stream(ws: Any, config: dict, max_events: int | None
     """Buffer before REST; publish RUNNING only after a depth update bridges the snapshot."""
     from collections import deque
 
-    ex = config["exchange"]
+    ex = config["venue"]
     symbol = ex["symbol"]
     policy = RecoveryPolicy.from_config(config)
     queue: asyncio.Queue = asyncio.Queue(maxsize=STREAM_BUFFER_LIMIT)

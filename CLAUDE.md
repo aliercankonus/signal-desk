@@ -1,8 +1,9 @@
 # signal-desk
 
-Binance BTCUSDT spot market-data capture and strategy research. **Paper-only**: `execution_enabled=false` is enforced in `config/loader.py`; never add real order placement without an explicit, separate decision from the owner.
+Market-data capture and strategy research. Markets are pluggable venues; Binance BTCUSDT spot (crypto) is the only one implemented, stocks are planned. **Paper-only**: `execution_enabled=false` is enforced in `config/loader.py`; never add real order placement without an explicit, separate decision from the owner.
 
 ## Layout
+- `src/signal_desk/venues/` — venue registry (crypto/stock); add a market here first
 - `src/signal_desk/collector/` — WebSocket + REST order-book capture, gap detection, continuous mode
 - `src/signal_desk/features/` — causal feature pipeline (capture and replay share it)
 - `src/signal_desk/replay/`, `research/` — ordered session replay, S1 baseline runner

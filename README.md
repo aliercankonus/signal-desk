@@ -1,6 +1,6 @@
 # signal-desk
 
-Paper-only research system for Binance BTCUSDT spot: captures the public order book and trades, builds causal features, and evaluates whether a short-horizon strategy can beat trading costs.
+Paper-only research system that captures market data, builds causal features, and evaluates whether a strategy can beat trading costs. Markets are pluggable venues: Binance BTCUSDT spot (crypto) is implemented; stocks are planned (roadmap Phase 5).
 
 **Status:** Phase 0 (clean start). No strategy has been validated; nothing here trades real money. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
