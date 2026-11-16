@@ -1,12 +1,14 @@
 """Opt-in continuous public-data collector; never an execution service."""
 import asyncio
 from dataclasses import asdict
+from datetime import datetime, timezone
 import fcntl
 import json
 import math
 from pathlib import Path
 import shutil
 import signal
+import threading
 import time
 import uuid
 
@@ -16,6 +18,11 @@ from signal_desk.collector import binance_collector as stream
 from signal_desk.collector.order_book_state import OrderBookGap
 from signal_desk.collector.recovery import RecoveryPolicy
 from signal_desk.config.loader import validate_config
+from signal_desk.storage import compact
+
+COMPACT_INTERVAL_SECONDS = 900
+COMPACT_PAUSE_SECONDS = 0.005  # per 1 MiB chunk, so compression doesn't starve the event path
+_compact_sleep = asyncio.sleep  # bound at import; independent of the reconnect backoff sleep
 
 
 class StorageLimit(RuntimeError):
@@ -34,6 +41,7 @@ class StorageGuard:
             raise ValueError("Invalid raw quota or disk HALT threshold")
         # One startup inventory; no full history scan in the event path.
         self.used = sum(f.stat().st_size for f in self.raw.rglob("*") if f.is_file())
+        self._lock = threading.Lock()  # writes and compaction update `used` from different threads
         self.interval, self.last_check = interval, float("-inf")
         self.check(0)
 
@@ -46,6 +54,14 @@ class StorageGuard:
             if usage.used / usage.total * 100 >= self.disk_halt:
                 raise StorageLimit("Filesystem disk HALT threshold reached")
             self.last_check = now
+
+    def add(self, size):
+        with self._lock:
+            self.used += size
+
+    def release(self, size):
+        with self._lock:
+            self.used = max(0, self.used - size)
 
 
 async def continuous_loop(config, policy, *, max_run_seconds=None):
@@ -118,7 +134,30 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
                 print(json.dumps({"status": "HALT", "reason": str(exc)}), flush=True)
                 return 3
 
+    async def compactor():
+        # Compression failures never stop collection; the raw quota HALT stays the backstop.
+        guard = config["_storage_guard"]
+        while True:
+            try:
+                files, saved = await asyncio.to_thread(
+                    compact.compress_closed_days, guard.raw, datetime.now(timezone.utc).date(),
+                    pause=COMPACT_PAUSE_SECONDS)
+                if files:
+                    guard.release(saved)
+                    runtime["raw_bytes"] = guard.used
+                    runtime["compacted_bytes_saved"] = runtime.get("compacted_bytes_saved", 0) + saved
+                    print(json.dumps({"status": "COMPACTED", "files": files, "saved_bytes": saved,
+                                      "raw_bytes": guard.used}), flush=True)
+                runtime.pop("last_compaction_error", None)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                runtime["last_compaction_error"] = str(exc)
+                print(json.dumps({"status": "COMPACTION_ERROR", "reason": str(exc)}), flush=True)
+            await _compact_sleep(COMPACT_INTERVAL_SECONDS)
+
     worker = asyncio.create_task(recover())
+    compaction = asyncio.create_task(compactor())
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     installed = []
@@ -147,7 +186,8 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
     finally:
         worker.cancel()
         stopper.cancel()
-        await asyncio.gather(worker, stopper, return_exceptions=True)
+        compaction.cancel()
+        await asyncio.gather(worker, stopper, compaction, return_exceptions=True)
         for sig in installed:
             loop.remove_signal_handler(sig)
 

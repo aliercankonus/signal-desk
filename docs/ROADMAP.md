@@ -33,7 +33,8 @@ Status (2026-11-16):
 - [ ] Owner: set the Hostinger connector's Execute and Multi-execute tools to "Always allow" (claude.ai, Connectors). Until then the connector's own policy asks for approval on every `execute` call, and repo allow rules can't override it.
 - [ ] Confirm overnight stability from the first daily check: reconnect_count near zero, gap_count 0.
 - [ ] Hostinger VM metrics (CPU/RAM/disk) return empty so far, so disk use can't be watched yet. Recheck; if still empty, add a disk check another way.
-- [ ] **Urgent:** raw-file retention/compression. Raw data grows about 3.6 MB/min (~5 GB/day; raw_bytes 4.1 MB at 10:42, 129.5 MB at 11:15 UTC), so the 30 GB raw quota would HALT the collector around 2026-11-22, before the 14-day gate. Confirm the rate in the daily checks.
+- [x] Raw compression: the collector gzips each closed UTC day in place (`.jsonl` -> `.jsonl.gz`, verified by SHA-256 before the original is removed), every 15 min. About 6x on synthetic events, so ~5 GB/day of raw data becomes ~0.8 GB/day and the 30 GB quota lasts about 5 weeks instead of about 6 days. No automatic deletion; the quota HALT stays the backstop. Readers glob `*.jsonl`, so `gzip -dk` a day into a separate directory before replay/research.
+- [ ] Confirm the real compression ratio after the first day closes (look for a `COMPACTED` line in the collector log, 2026-11-17 after 00:10 UTC).
 
 ## Phase 2 — Research: does S1 beat costs?
 - Run the predeclared S1 experiment (`docs/research/s1_experiment_v1.json`) offline on collected data.
