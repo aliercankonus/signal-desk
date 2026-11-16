@@ -20,4 +20,5 @@ Market-data capture and strategy research. Markets are pluggable venues; Binance
 - No new process ceremony (authorization files, digests, handoff docs). Plain code, tests, PRs.
 - Paper-only is a hard rule. No AI in any order path; trading logic is deterministic code with hard limits.
 - Follow `.claude/skills/token-efficiency` on every task.
+- Routine output-heavy work goes to Haiku subagents: `vps-status` for VPS checks, `test-runner` for test runs.
 - The VPS is managed through the Hostinger API; see `.claude/skills/vps-ops`.

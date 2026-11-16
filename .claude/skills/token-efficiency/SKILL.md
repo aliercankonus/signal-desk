@@ -24,7 +24,21 @@ Context is the main cost. Every file read, command output and reply stays in the
 - Put durable notes in the PR description or `docs/ROADMAP.md`, not in chat, so the next session reads them cheaply.
 - Don't start subagents for work you can do with a few targeted searches; each one re-reads context.
 - Replies: lead with the result, skip restating the request, no long summaries of what the diff already shows.
-- Pick the model for the job: a smaller model for routine edits, test fixes and status checks; the largest model for design and research decisions.
+
+## Model routing
+Use the smallest model that can do the job.
+
+| Work | Where it runs |
+|---|---|
+| VPS status / health checks | `vps-status` subagent (Haiku) |
+| Running tests and summarising failures | `test-runner` subagent (Haiku) |
+| Small fixes, deploys, config changes, docs | Main session on a mid-size model (Sonnet) |
+| Architecture, research design, strategy evaluation, safety reviews | Main session on the largest model (Opus) |
+
+- Delegate to the Haiku subagents when the work produces long output (metrics, logs, test runs): only their short summary enters the main context.
+- Don't delegate small lookups: starting a subagent has its own overhead. A single `grep` or one API call is cheaper inline.
+- Effectful VPS actions (deploy, stop, firewall changes) stay in the main session so the owner sees and approves them.
+- The main session's model is chosen by the owner in the model picker. If a session is clearly routine, suggest switching to Sonnet; if it turns into design or research, suggest Opus.
 
 ## Keep the always-loaded context small
 - `CLAUDE.md` stays under ~40 lines. Move detail into skills, which load only when used.
