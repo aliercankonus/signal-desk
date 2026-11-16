@@ -136,6 +136,9 @@ class StreamSyncError(RuntimeError):
 STREAM_BUFFER_LIMIT = 4096  # bursts overflowed 256 on the VPS (event writes spike to ~250 ms)
 STREAM_MESSAGE_MAX_BYTES = 256 * 1024
 STREAM_WAIT_SECONDS = 10
+# A few seconds without trades is normal in quiet markets while depth keeps flowing; only a
+# long silence means the trade feed is broken. stale_trades_ms still governs feature validity.
+TRADE_FEED_STALE_SECONDS = 60
 SNAPSHOT_ATTEMPTS = 3
 
 
@@ -308,16 +311,29 @@ async def collect_connected_stream(ws: Any, config: dict, max_events: int | None
         last_status = now()
         bridge_deadline = now() + STREAM_WAIT_SECONDS
         depth_stale_seconds = ex["market_data"].get("stale_l2_ms", 2000) / 1000
-        trade_stale_seconds = ex["market_data"].get("stale_trades_ms", 3000) / 1000
+        trade_stale_seconds = max(ex["market_data"].get("stale_trades_ms", 3000) / 1000, TRADE_FEED_STALE_SECONDS)
         while True:
             if reader.done():
                 reader.result()
             deadline = min(last_depth + depth_stale_seconds, last_trade + trade_stale_seconds) if synchronized else bridge_deadline
-            event = pending.popleft() if pending else await next_event(min(STREAM_WAIT_SECONDS, max(.001, deadline - now())))
-            if synchronized and now() - last_depth > depth_stale_seconds:
-                raise sync_error("Depth feed stale while other messages continue", event)
-            if synchronized and now() - last_trade > trade_stale_seconds:
-                raise sync_error("Trade feed stale while depth messages continue", event)
+
+            def check_stale(event=None):
+                # Name the stale feed instead of reporting a generic wait timeout.
+                if synchronized and now() - last_depth > depth_stale_seconds:
+                    raise sync_error("Depth feed stale while other messages continue", event)
+                if synchronized and now() - last_trade > trade_stale_seconds:
+                    raise sync_error("Trade feed stale while depth messages continue", event)
+
+            if pending:
+                event = pending.popleft()
+            else:
+                check_stale()
+                try:
+                    event = await next_event(min(STREAM_WAIT_SECONDS, max(.001, deadline - now())))
+                except StreamSyncError:
+                    check_stale()
+                    raise
+            check_stale(event)
             if not synchronized and now() > bridge_deadline:
                 raise StreamSyncError("Timed out waiting for depth bridge")
             if event["event_type"] == "book_delta":
