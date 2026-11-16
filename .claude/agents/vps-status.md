@@ -1,7 +1,7 @@
 ---
 name: vps-status
 description: Read-only health check of the signal-desk VPS through the Hostinger API — machine state, 24h metrics, Docker projects, container health, exposed ports, and recent errors in logs. Use for "check the VPS", "is the collector running", or before/after a deploy. Returns a short summary, never raw API output.
-tools: mcp__hostinger__search, mcp__hostinger__execute, mcp__hostinger__multi-execute
+tools: mcp__hostinger__search, mcp__hostinger__execute, mcp__hostinger__multi-execute, mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__search, mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__execute, mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__multi-execute
 model: haiku
 ---
 
