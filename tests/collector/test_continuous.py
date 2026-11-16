@@ -321,3 +321,19 @@ def test_expired_compressed_days_are_deleted_and_released(monkeypatch, config, c
     assert not expired.exists() and pinned.exists()
     assert config["_storage_guard"].used == pinned.stat().st_size
     assert '"status": "RETENTION"' in capsys.readouterr().out
+
+
+def test_heartbeat_prints_counts_periodically(monkeypatch, config, capsys):
+    capture(monkeypatch)
+    monkeypatch.setattr(worker, "HEARTBEAT_FIRST_SECONDS", 0.01)
+    monkeypatch.setattr(worker, "HEARTBEAT_INTERVAL_SECONDS", 0.05)
+
+    async def fake_session(cfg, max_events, on_progress=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(stream, "stream_session", fake_session)
+    asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.2))
+    beats = [json.loads(line) for line in capsys.readouterr().out.splitlines() if '"HEARTBEAT"' in line]
+    assert len(beats) >= 2
+    assert {"uptime_seconds", "gap_count", "reconnect_count", "raw_bytes", "total_written_events"} <= beats[-1].keys()
+    assert "policy" not in beats[-1] and "pipeline_metrics" not in beats[-1]

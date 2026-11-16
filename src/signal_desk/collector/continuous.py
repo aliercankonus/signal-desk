@@ -21,6 +21,11 @@ from signal_desk.config.loader import validate_config
 from signal_desk.storage import compact
 
 COMPACT_INTERVAL_SECONDS = 900
+HEARTBEAT_FIRST_SECONDS = 60     # one early line confirms a fresh start
+HEARTBEAT_INTERVAL_SECONDS = 3600  # then hourly, so log readers see counts, not just silence
+HEARTBEAT_FIELDS = ("session_synchronized", "total_written_events", "total_depth_events",
+                    "total_trade_events", "gap_count", "reconnect_count", "consecutive_failures",
+                    "compacted_bytes_saved", "last_compaction_error")
 COMPACT_PAUSE_SECONDS = 0.005  # per 1 MiB chunk, so compression doesn't starve the event path
 _compact_sleep = asyncio.sleep  # bound at import; independent of the reconnect backoff sleep
 
@@ -168,8 +173,19 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
                 print(json.dumps({"status": "COMPACTION_ERROR", "reason": str(exc)}), flush=True)
             await _compact_sleep(COMPACT_INTERVAL_SECONDS)
 
+    async def heartbeat():
+        started = time.monotonic()
+        await _compact_sleep(HEARTBEAT_FIRST_SECONDS)
+        while True:
+            line = {"status": "HEARTBEAT", "uptime_seconds": round(time.monotonic() - started)}
+            line.update({key: runtime[key] for key in HEARTBEAT_FIELDS if key in runtime})
+            line["raw_bytes"] = config["_storage_guard"].used
+            print(json.dumps(line), flush=True)
+            await _compact_sleep(HEARTBEAT_INTERVAL_SECONDS)
+
     worker = asyncio.create_task(recover())
     compaction = asyncio.create_task(compactor())
+    beat = asyncio.create_task(heartbeat())
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     installed = []
@@ -199,7 +215,8 @@ async def continuous_loop(config, policy, *, max_run_seconds=None):
         worker.cancel()
         stopper.cancel()
         compaction.cancel()
-        await asyncio.gather(worker, stopper, compaction, return_exceptions=True)
+        beat.cancel()
+        await asyncio.gather(worker, stopper, compaction, beat, return_exceptions=True)
         for sig in installed:
             loop.remove_signal_handler(sig)
 
