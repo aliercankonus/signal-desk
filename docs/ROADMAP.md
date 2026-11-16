@@ -12,10 +12,14 @@ Each phase has an exit gate. Do not start the next phase until the gate is met a
 
 Status (2026-11-16):
 - [x] Repo created, CI green, image published to GHCR
-- [ ] GHCR package `signal-desk` set to Public (owner, GitHub UI)
-- [ ] VPS reinstalled as "Ubuntu 24.04 with Docker" (owner started it); old Hermes/ChatGPT credentials revoked
-- [ ] Firewall: inbound 22, 80, 443 only
-- [ ] Deploy with `vps_docker_create` (see `.claude/skills/vps-ops`), then confirm api healthy + collector running
+- [x] GHCR package `signal-desk` is public (anonymous pull works)
+- [x] VPS reinstalled as "Ubuntu 24.04 with Docker and Traefik"; no old Hermes/project containers remain
+- [ ] Old Hermes/ChatGPT credentials revoked (owner to confirm)
+- [x] Firewall: inbound TCP 22, 80, 443 only (Hostinger firewall, synced and active)
+- [x] Deployed with `vps_docker_create`; api healthy (127.0.0.1:8080 only), collector running
+- [x] Collector stream buffer raised 256 -> 4096 (#4) after early overflow resyncs; after redeploy: 0 gaps, peak queue 1012, one stale-feed reconnect in the first 5 min
+
+**Gate met** (API and collector running, health ok). Phase 1 starts once the credentials item is confirmed.
 
 ## Phase 1 — Data collection (2–4 weeks)
 - Collector runs in continuous mode; daily check of status, gaps, reconnects and disk use.
