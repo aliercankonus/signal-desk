@@ -12,7 +12,9 @@
       "Bash(git switch*)",
       "Bash(git push*)",
       "Bash(pip install -r requirements.txt)",
-      "mcp__hostinger__search"
+      "mcp__hostinger__search",
+      "mcp__hostinger__execute",
+      "mcp__hostinger__multi-execute"
     ],
     "deny": [
       "Read(./data/**)",
