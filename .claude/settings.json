@@ -14,7 +14,10 @@
       "Bash(pip install -r requirements.txt)",
       "mcp__hostinger__search",
       "mcp__hostinger__execute",
-      "mcp__hostinger__multi-execute"
+      "mcp__hostinger__multi-execute",
+      "mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__search",
+      "mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__execute",
+      "mcp__c994b6a6-c0be-4fd6-87c7-825d996129c5__multi-execute"
     ],
     "deny": [
       "Read(./data/**)",
