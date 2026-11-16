@@ -1,0 +1,42 @@
+# Deployable as-is through the Hostinger Docker manager: no local build context or bind mounts.
+# The image is built and pushed to GHCR by .github/workflows/ci.yml on every push to main.
+services:
+  api:
+    image: ghcr.io/aliercankonus/signal-desk:main
+    command: ["python", "-m", "signal_desk.api.health_server", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - data:/data
+    mem_limit: 192m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "signal_desk.api.healthcheck", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  collector:
+    image: ghcr.io/aliercankonus/signal-desk:main
+    # Continuous public market-data capture. It HALTs (exit 3) on bans, quota or disk limits;
+    # restart is deliberately "no" so a HALT is investigated instead of retried against Binance.
+    command: ["python", "-m", "signal_desk.collector.binance_collector", "--mode", "continuous", "--config", "config/config.yaml"]
+    volumes:
+      - data:/data
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 64
+    restart: "no"
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  data:
