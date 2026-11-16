@@ -251,3 +251,44 @@ def test_invalid_continuous_duration_is_rejected(monkeypatch, config, duration):
 
 
 
+
+
+def test_closed_raw_days_are_compressed_and_released_from_the_quota(monkeypatch, config, capsys):
+    import gzip, os, time
+    capture(monkeypatch)
+    raw = Path(config["storage"]["raw_path"])
+    raw.mkdir(parents=True)
+    old_day = raw / "binance_btcusdt_trade_2020-01-01.jsonl"
+    old_day.write_bytes(b'{"event_id":"e","p":"10"}\n' * 5000)
+    old = time.time() - 3600
+    os.utime(old_day, (old, old))
+    original = old_day.stat().st_size
+
+    async def fake_session(cfg, max_events, on_progress=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(stream, "stream_session", fake_session)
+    # 2 = stopped before any synchronized session (the fake stream never syncs).
+    assert asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.5)) == 2
+    runtime = config["_collector_runtime"]
+    compressed = raw / (old_day.name + ".gz")
+    assert not old_day.exists() and compressed.exists()
+    assert runtime["compacted_bytes_saved"] == original - compressed.stat().st_size
+    assert config["_storage_guard"].used == compressed.stat().st_size
+    assert '"status": "COMPACTED"' in capsys.readouterr().out
+
+
+def test_compaction_failure_does_not_stop_collection(monkeypatch, config, capsys):
+    capture(monkeypatch)
+
+    def broken(*args, **kwargs):
+        raise OSError("disk read error")
+
+    async def fake_session(cfg, max_events, on_progress=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(worker.compact, "compress_closed_days", broken)
+    monkeypatch.setattr(stream, "stream_session", fake_session)
+    assert asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.2)) == 2
+    assert config["_collector_runtime"]["last_compaction_error"] == "disk read error"
+    assert "COMPACTION_ERROR" in capsys.readouterr().out

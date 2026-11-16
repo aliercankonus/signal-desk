@@ -49,7 +49,7 @@ storage:
   model_path: /data/models
   report_path: /data/reports
   backup_path: /data/backups
-  raw_codec: zstd
+  raw_codec: gzip  # closed UTC days are compressed in place by the collector (storage/compact.py)
   feature_format: parquet
   ledger_store: sqlite_wal
 

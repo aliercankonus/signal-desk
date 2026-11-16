@@ -99,7 +99,7 @@ def write_event(config: dict, event: dict) -> None:
         metrics["max_write_ms"] = max(metrics["max_write_ms"], metrics["last_write_ms"])
         metrics["max_io_ms"] = max(metrics["max_io_ms"], (time.perf_counter() - io_started) * 1000)
     if guard is not None:
-        guard.used += size
+        guard.add(size)
     if runtime is not None:
         runtime["total_written_events"] += 1
         runtime["total_depth_events"] += int(event["event_type"] == "book_delta")
