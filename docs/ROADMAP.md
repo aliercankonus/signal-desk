@@ -34,6 +34,7 @@ Status (2026-11-16):
 - [ ] Confirm overnight stability from the first daily check: reconnect_count near zero, gap_count 0.
 - [ ] Hostinger VM metrics (CPU/RAM/disk) return empty so far, so disk use can't be watched yet. Recheck; if still empty, add a disk check another way.
 - [x] Raw compression: the collector gzips each closed UTC day in place (`.jsonl` -> `.jsonl.gz`, verified by SHA-256 before the original is removed), every 15 min. About 6x on synthetic events, so ~5 GB/day of raw data becomes ~0.8 GB/day and the 30 GB quota lasts about 5 weeks instead of about 6 days. No automatic deletion; the quota HALT stays the backstop. Readers glob `*.jsonl`, so `gzip -dk` a day into a separate directory before replay/research.
+- [x] Raw retention: compressed raw days are kept 75 days (S1's 60-day window + 15 days margin; the same window serves periodic re-validation in production), then deleted. Days listed in `retention.raw_pinned_days` are never deleted; the collector refuses to start with a keep window under 60 days. Raw quota raised 30 -> 60 GB.
 - [ ] Confirm the real compression ratio after the first day closes (look for a `COMPACTED` line in the collector log, 2026-11-17 after 00:10 UTC).
 
 ## Phase 2 — Research: does S1 beat costs?

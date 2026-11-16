@@ -54,8 +54,11 @@ storage:
   ledger_store: sqlite_wal
 
 retention:
-  raw_target_days: 7
-  raw_pool_gb: 30
+  # Raw days are kept compressed for 75 days (S1's 60-day window + 15 days margin), for research
+  # and for periodic re-validation in production. Pinned days (YYYY-MM-DD) are never deleted.
+  raw_target_days: 75
+  raw_pool_gb: 60
+  raw_pinned_days: []
   feature_days: 30
   feature_pool_gb: 12
   minute_aggregate_days: 180

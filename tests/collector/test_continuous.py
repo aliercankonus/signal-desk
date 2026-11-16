@@ -258,7 +258,9 @@ def test_closed_raw_days_are_compressed_and_released_from_the_quota(monkeypatch,
     capture(monkeypatch)
     raw = Path(config["storage"]["raw_path"])
     raw.mkdir(parents=True)
-    old_day = raw / "binance_btcusdt_trade_2020-01-01.jsonl"
+    from datetime import datetime, timedelta, timezone
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+    old_day = raw / f"binance_btcusdt_trade_{yesterday}.jsonl"  # closed, but inside the retention window
     old_day.write_bytes(b'{"event_id":"e","p":"10"}\n' * 5000)
     old = time.time() - 3600
     os.utime(old_day, (old, old))
@@ -292,3 +294,30 @@ def test_compaction_failure_does_not_stop_collection(monkeypatch, config, capsys
     assert asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.2)) == 2
     assert config["_collector_runtime"]["last_compaction_error"] == "disk read error"
     assert "COMPACTION_ERROR" in capsys.readouterr().out
+
+
+def test_retention_config_below_60_days_halts_at_startup(config):
+    config["retention"]["raw_target_days"] = 7
+    with pytest.raises(ValueError, match="raw_target_days"):
+        worker.StorageGuard(config, 5)
+
+
+def test_expired_compressed_days_are_deleted_and_released(monkeypatch, config, capsys):
+    import gzip
+    capture(monkeypatch)
+    raw = Path(config["storage"]["raw_path"])
+    raw.mkdir(parents=True)
+    expired = raw / "binance_btcusdt_depth_2020-01-01.jsonl.gz"
+    expired.write_bytes(gzip.compress(b"{}\n" * 1000))
+    pinned = raw / "binance_btcusdt_depth_2020-01-02.jsonl.gz"
+    pinned.write_bytes(gzip.compress(b"{}\n" * 1000))
+    config["retention"]["raw_pinned_days"] = ["2020-01-02"]
+
+    async def fake_session(cfg, max_events, on_progress=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(stream, "stream_session", fake_session)
+    assert asyncio.run(worker.continuous_loop(config, RecoveryPolicy(), max_run_seconds=.3)) == 2
+    assert not expired.exists() and pinned.exists()
+    assert config["_storage_guard"].used == pinned.stat().st_size
+    assert '"status": "RETENTION"' in capsys.readouterr().out

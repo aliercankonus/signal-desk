@@ -77,3 +77,33 @@ def test_failed_verification_keeps_the_original(tmp_path, monkeypatch):
         compact.compress_closed_days(tmp_path, TODAY)
     assert path.exists()
     assert not list(tmp_path.glob("*.gz*"))
+
+
+def gz(tmp_path, day, kind="depth"):
+    path = tmp_path / f"binance_btcusdt_{kind}_{day}.jsonl.gz"
+    path.write_bytes(gzip.compress(b"{}\n" * 100))
+    return path
+
+
+def test_retention_deletes_only_compressed_days_outside_the_window(tmp_path):
+    expired = gz(tmp_path, "2026-08-01")          # older than 75 days before TODAY
+    kept = gz(tmp_path, "2026-09-03")             # exactly today - 75: still inside
+    raw_old = tmp_path / "binance_btcusdt_trade_2026-08-01.jsonl"
+    raw_old.write_text("{}\n")                    # uncompressed: never deleted by retention
+    size = expired.stat().st_size
+    assert compact.delete_expired_days(tmp_path, TODAY, 75) == (1, size)
+    assert not expired.exists() and kept.exists() and raw_old.exists()
+
+
+def test_pinned_days_are_never_deleted(tmp_path):
+    pinned = gz(tmp_path, "2026-08-01")
+    assert compact.delete_expired_days(tmp_path, TODAY, 75, frozenset({date(2026, 8, 1)})) == (0, 0)
+    assert pinned.exists()
+
+
+@pytest.mark.parametrize("keep", [7, 59, 75.0, None])
+def test_keep_window_below_the_60_day_research_need_is_refused(tmp_path, keep):
+    old = gz(tmp_path, "2026-01-01")
+    with pytest.raises(compact.CompactionError):
+        compact.delete_expired_days(tmp_path, TODAY, keep)
+    assert old.exists()

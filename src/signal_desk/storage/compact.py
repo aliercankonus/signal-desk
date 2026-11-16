@@ -1,14 +1,18 @@
-"""Compress closed raw days in place: name.jsonl -> name.jsonl.gz.
+"""Compress closed raw days in place (name.jsonl -> name.jsonl.gz) and expire old compressed days.
 
 A day file is compressed only after its UTC day has ended and it has been idle for a while.
 The .gz is written as .gz.part, verified against the original (size and SHA-256 of the
 decompressed bytes), renamed, and only then is the original removed. Nothing is ever deleted
 without a verified compressed copy. Readers that glob *.jsonl ignore .gz files; decompress a
 day (``gzip -dk``) into a separate directory for replay or research.
+
+Retention deletes only verified .gz day files older than the keep window, never an uncompressed
+.jsonl and never a pinned day. The keep window may not drop below MIN_KEEP_DAYS: the S1 research
+split and its periodic re-validation in production both need a full 60-day window.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import gzip
 import hashlib
 import os
@@ -17,6 +21,8 @@ import re
 import time
 
 DAY_FILE = re.compile(r"_(\d{4}-\d{2}-\d{2})\.jsonl$")
+GZ_DAY_FILE = re.compile(r"_(\d{4}-\d{2}-\d{2})\.jsonl\.gz$")
+MIN_KEEP_DAYS = 60
 CHUNK = 1024 * 1024
 
 
@@ -102,3 +108,30 @@ def compress_closed_days(raw_dir: str | Path, today: date, *, min_idle_seconds: 
         saved += compress_file(path, pause=pause)
         files += 1
     return files, saved
+
+
+def delete_expired_days(raw_dir: str | Path, today: date, keep_days: int,
+                        pinned: frozenset[date] = frozenset()) -> tuple[int, int]:
+    """Delete compressed day files older than ``today - keep_days`` unless pinned.
+
+    Returns (files deleted, bytes freed).
+    """
+    if not isinstance(keep_days, int) or keep_days < MIN_KEEP_DAYS:
+        raise CompactionError(f"raw_target_days must be an integer >= {MIN_KEEP_DAYS}")
+    cutoff = today - timedelta(days=keep_days)
+    directory = Path(raw_dir)
+    files = freed = 0
+    for path in sorted(directory.glob("*.jsonl.gz")):
+        match = GZ_DAY_FILE.search(path.name)
+        if not match:
+            continue
+        day = date.fromisoformat(match.group(1))
+        if day >= cutoff or day in pinned:
+            continue
+        size = path.stat().st_size
+        path.unlink()
+        files += 1
+        freed += size
+    if files:
+        _fsync_dir(directory)
+    return files, freed
