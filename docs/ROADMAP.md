@@ -35,16 +35,24 @@ Status (2026-11-16):
 - [ ] Hostinger VM metrics (CPU/RAM/disk) return empty so far, so disk use can't be watched yet. Recheck; if still empty, add a disk check another way.
 - [x] Raw compression: the collector gzips each closed UTC day in place (`.jsonl` -> `.jsonl.gz`, verified by SHA-256 before the original is removed), every 15 min. About 6x on synthetic events, so ~5 GB/day of raw data becomes ~0.8 GB/day and the 30 GB quota lasts about 5 weeks instead of about 6 days. No automatic deletion; the quota HALT stays the backstop. Readers glob `*.jsonl`, so `gzip -dk` a day into a separate directory before replay/research.
 - [x] Raw retention: compressed raw days are kept 75 days (S1's 60-day window + 15 days margin; the same window serves periodic re-validation in production), then deleted. Days listed in `retention.raw_pinned_days` are never deleted; the collector refuses to start with a keep window under 60 days. Raw quota raised 30 -> 60 GB.
-- [ ] Confirm the real compression ratio after the first day closes (look for a `COMPACTED` line in the collector log, 2026-11-17 after 00:10 UTC).
+- [ ] Confirm the real compression ratio after the first day closes (look for a `COMPACTED` line in the collector log, 2026-11-17 after 00:10 UTC). If the real ratio is well below ~6x, switch the codec to zstd (measured on synthetic events: zstd-19 8.2x vs gzip-6 6.2x; zstd-3 matches gzip at ~6x the speed). Needs the `zstandard` dependency and `.zst` support in readers.
 
 ## Phase 2 — Research: does S1 beat costs?
 - Run the predeclared S1 experiment (`docs/research/s1_experiment_v1.json`) offline on collected data.
+- Data needed: S1 uses a fixed 60-day window (36 train / 12 validation / 12 final test), so the full run can't happen before about 60 days of clean collection (~2027-01-15 if collection stays clean from 2026-11-16). The Phase 1 14-day gate proves data quality only.
+- Storage work before research:
+  - Teach replay/audit/research to read compressed day files directly (`.jsonl.gz`); until then, `gzip -dk` a day into a separate directory.
+  - Convert the research dataset to Parquet (columnar; the config already plans `feature_format: parquet`) for fast queries. About 7.7x vs raw JSON on synthetic events.
+  - Decide whether raw records should keep only the original Binance message and map on replay: ~830 B/event today vs about a third of that, and ~16x compressed with zstd-19 (~0.3 GB/day). This changes the raw schema, the audit and hash verification, so it needs its own design review. Don't change it mid-collection.
 - Add a cost model: 0.10% taker per side (0.20% round trip) unless verified lower fees apply, plus spread/slippage.
 - Evaluate once on held-out data after validation-only selection.
 - **Gate:** positive expected return after all costs on out-of-sample data, with enough trades to matter. If not met: stop or change the hypothesis. No tuning on the test set.
 
 ## Phase 3 — Live paper trading (several weeks)
 - Deterministic paper trader using live data, the conservative fill model and a simple ledger; daily P&L report.
+- Keep the same 75-day raw window for periodic re-validation of the edge (re-run the 36/12/12 check on the latest 60 days, e.g. monthly).
+- Store per-trade evidence (decision record, book summary at decision time, fill) in the ledger indefinitely. Pin raw days needed for incident review in `retention.raw_pinned_days`.
+- Off-VPS archive for raw days older than 75 days that must be kept (S3-compatible object storage, e.g. Backblaze B2 at about $6/TB/month), so the VPS disk stays bounded.
 - **Gate:** paper results consistent with Phase 2 for several weeks.
 
 ## Phase 4 — Small real-money pilot (only with explicit owner approval)
