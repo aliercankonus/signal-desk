@@ -1,0 +1,64 @@
+{
+  "experiment_version": "klines-hourly-trend-multicoin-spot-v5",
+  "review_status": "predeclared_not_executed",
+  "purpose": "Check whether the frozen v4 rule (SMA 2400h, 2% band, long or cash) is more than a BTC-specific fit, by running it unchanged on a basket of other coins over a window those coins were never explored on.",
+  "relation_to_v4": "v4 passed its backcheck on BTC 2024-01-01..2026-11-01, but that window was partly seen and the rule was the best of 64 variants. The exploration used non-BTC coins only up to 2023-12-31, so 2024-01-01..2026-11-01 is unseen for them. v4 and its forward phase are unchanged by this spec.",
+  "venue": "binance_spot",
+  "position_scope": "each coin long or flat on its own signal, no leverage, no shorting, paper research only",
+  "universe": {
+    "selection_rule": "USDT spot pairs with a 1mo kline file for both 2021-12 and 2023-12; exclude BTC and BTC wrappers (BTC, WBTC, BTCST), stablecoins and fiat (USDC, BUSD, TUSD, USDP, PAX, DAI, FDUSD, USDS, SUSD, UST, EUR, GBP, AUD, TRY, BRL, RUB, UAH, NGN, ZAR, BIDR, IDRT, BKRW, AEUR, EURI, USDE, XUSD), gold (PAXG) and leveraged tokens (base ending UP, DOWN, BULL, BEAR); rank by summed 2023 quote volume from the 1mo files; take the top 20.",
+    "data_used_for_selection": "only 1mo klines up to 2023-12 (checksum-verified); listing from the data.binance.vision bucket, which keeps delisted symbols",
+    "symbols": ["ETHUSDT", "XRPUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "MATICUSDT", "LTCUSDT", "AVAXUSDT", "LINKUSDT", "ADAUSDT", "SHIBUSDT", "CFXUSDT", "FTMUSDT", "FILUSDT", "GALAUSDT", "DYDXUSDT", "DOTUSDT", "INJUSDT", "NEARUSDT", "TRXUSDT"],
+    "survivorship": "symbols are fixed as of 2023-12-31; a symbol whose data ends inside the window (delisting or rename, e.g. MATIC to POL) is closed at its last available open with exit cost and its sleeve stays in cash afterwards"
+  },
+  "data_source": {
+    "files": "https://data.binance.vision/data/spot/monthly/klines/{SYMBOL}/1h/{SYMBOL}-1h-YYYY-MM.zip, months 2023-07..2026-10, plus daily/ files for 2026-11-01",
+    "checksum": "every zip verified against its .CHECKSUM (sha256) before use",
+    "columns_used": "open_time, open, close",
+    "gaps": "missing hours are counted and reported per coin; a gap longer than 24 hours inside the window is an error"
+  },
+  "rule": {
+    "name": "sma_band (identical to v4)",
+    "N_bars": 2400,
+    "band": 0.02,
+    "definition": "per coin: sma = mean of the last 2400 closes including the current bar; long when close > sma * 1.02, flat when close < sma * 0.98, otherwise unchanged; initial state flat",
+    "clock": "state after the close of bar i is held from the open of bar i+1 to the open of bar i+2",
+    "parameter_search": "none"
+  },
+  "portfolio": {
+    "weights": "starting capital split equally into 20 sleeves (1/20 each); each sleeve compounds on its own; no rebalancing",
+    "equity": "portfolio equity at each UTC hour = mean of sleeve equities (a sleeve's equity carries forward over missing hours and after its data ends)"
+  },
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "adverse_price_per_side": 0.0002,
+    "cost_per_side": 0.0012,
+    "applied": "sleeve equity multiplied by (1 - 0.0012) on every entry and every exit",
+    "note": "smaller coins have wider spreads than BTC; 2 bp adverse price is optimistic for the lowest-volume names and is listed as a limit"
+  },
+  "window_utc": {"start": "2024-01-01", "end": "2026-11-01", "rules": "all sleeves start flat; no entry in the first 24 hours (embargo); open positions closed at the end with exit cost"},
+  "metrics": {
+    "portfolio": ["total net return", "CAGR", "annualised Sharpe of hourly portfolio returns (sqrt(8760))", "max drawdown", "total round trips", "average exposure"],
+    "per_coin": ["net return", "max drawdown", "round trips", "exposure", "missing hours", "last bar if data ends early"]
+  },
+  "baselines": ["cash (0 return) - the benchmark", "equal-weight buy-and-hold of the same 20 coins with costs - information only"],
+  "evaluation": {
+    "runs": 1,
+    "enforcement": "runner refuses a second run (exclusive marker file next to the data)",
+    "pass_criteria_all_required": [
+      "portfolio total net return > 0",
+      "portfolio Sharpe > 0.5",
+      "portfolio max drawdown < 0.35",
+      "total round trips >= 40"
+    ],
+    "reported_not_required": ["number of coins with net return > 0", "equal-weight buy-and-hold"],
+    "if_pass": "evidence that the v4 rule is not BTC-only; a multi-coin forward paper phase would need its own spec. Not a profitability claim.",
+    "if_fail": "the v4 rule does not generalise; v4 continues its BTC forward phase but with lower confidence; no tuning on this window"
+  },
+  "known_limits": [
+    "Coins are strongly correlated with each other and with BTC; 20 coins are far fewer than 20 independent tests.",
+    "The window is unseen for these coins, but the general market path of 2024-2026 is known to the author.",
+    "Spread and slippage on the smallest names may exceed 2 bp per side.",
+    "Delisted or renamed coins are exited at their last published price; a real holder might have been converted instead (e.g. MATIC to POL)."
+  ]
+}
