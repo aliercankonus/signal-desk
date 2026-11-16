@@ -19,7 +19,8 @@ There is no SSH from Claude sessions. Everything goes through the Hostinger tool
 ## Deploy
 - CI publishes `ghcr.io/aliercankonus/signal-desk:main` after every merge to `main`. Confirm the publish job passed for the commit before deploying.
 - Deploy or update with `vps_docker_create`, `project_name: signal-desk`, `content`: the raw URL of `docker-compose.yml` on `main` (`https://raw.githubusercontent.com/aliercankonus/signal-desk/main/docker-compose.yml`). Same name replaces the project; the `data` volume is kept.
-- After deploy: `vps_docker_list` until `api` is healthy and `collector` is running, then check logs once.
+- `vps_docker_update` only pulls newer images into the compose file already on the VPS (`/docker/signal-desk/docker-compose.yml`). It does not apply changes to `docker-compose.yml` (healthchecks, env, volumes, services). If the merge touched the compose file, use `vps_docker_create` as above.
+- After deploy: `vps_docker_list` until `api` and `collector` are both healthy (the collector's healthcheck has a 120 s start period), then check logs once.
 
 ## Collector rules
 - The collector exits with code 3 on HALT (Binance ban/rate limit, raw quota, disk threshold). Do not restart it in a loop. Read the logs, report the reason, and ask the owner.
