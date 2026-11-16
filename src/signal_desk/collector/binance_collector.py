@@ -91,7 +91,13 @@ def write_event(config: dict, event: dict) -> None:
     try:
         if guard is not None:
             guard.check(size)
-        append_jsonl(raw_file(config, suffix), event)
+        path = raw_file(config, suffix)
+        synced = config.setdefault("_last_fsync", {})
+        # shortcut: a file's tail after its last write (rotation, shutdown) relies on kernel writeback (~30 s).
+        due = time.monotonic() - synced.get(path, float("-inf")) >= FSYNC_INTERVAL_SECONDS
+        append_jsonl(path, event, fsync=due)
+        if due:
+            synced[path] = time.monotonic()
     except OSError as exc:
         raise CollectorStorageError(str(exc)) from exc
     if metrics is not None:
@@ -136,6 +142,8 @@ class StreamSyncError(RuntimeError):
 STREAM_BUFFER_LIMIT = 4096  # bursts overflowed 256 on the VPS (event writes spike to ~250 ms)
 STREAM_MESSAGE_MAX_BYTES = 256 * 1024
 STREAM_WAIT_SECONDS = 10
+# One fsync per event capped throughput; ~250 ms spikes backed the queue past stale_l2_ms.
+FSYNC_INTERVAL_SECONDS = 0.1
 # A few seconds without trades is normal in quiet markets while depth keeps flowing; only a
 # long silence means the trade feed is broken. stale_trades_ms still governs feature validity.
 TRADE_FEED_STALE_SECONDS = 60

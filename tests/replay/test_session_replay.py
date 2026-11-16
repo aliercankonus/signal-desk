@@ -36,7 +36,7 @@ def capture(tmp_path, monkeypatch):
     monkeypatch.setattr(collector, "utc_now_iso", lambda: applied["at"])
     monkeypatch.setattr(collector.time, "monotonic_ns", lambda: applied["ns"])
     # Keep real capture logic; avoid fsync cost for fixture generation only.
-    def append(path, event):
+    def append(path, event, **_):
         with Path(path).open("ab") as stream:
             stream.write(canonical_bytes(event) + b"\n")
     monkeypatch.setattr(collector, "append_jsonl", append)
