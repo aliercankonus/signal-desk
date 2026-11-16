@@ -1,0 +1,73 @@
+{
+  "experiment_version": "klines-hourly-trend-btcusdt-spot-v4",
+  "review_status": "predeclared_not_executed",
+  "supersedes": "klines-daily-btcusdt-spot-v3 (FAIL: beat cash but not buy-and-hold; test window spent). The owner has since decided that holding BTC is not an option, so the benchmark is cash.",
+  "hypothesis": "A single slow trend filter on BTCUSDT (long while price is above its 2400-hour average, otherwise cash) earns a positive after-cost return with a moderate drawdown.",
+  "origin": "Chosen from the exploration in klines_exploration_2018_2023.md (64 rule variants, data to 2023-12-31 only). That exploration is not evidence; this spec fixes one rule and tests it on later data.",
+  "symbol": "BTCUSDT",
+  "venue": "binance_spot",
+  "position_scope": "long or flat, fully invested when long, no leverage, no shorting, paper research only",
+  "data_source": {
+    "files": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-YYYY-MM.zip (and the daily/ files for days after the last full month)",
+    "checksum": "every zip verified against its .CHECKSUM (sha256) before use",
+    "months": "2023-07 onward (warm-up before 2024-01-01)",
+    "columns_used": "open_time, open, close",
+    "timestamp_unit": "milliseconds before 2025, microseconds from 2025; the runner normalises to UTC hours",
+    "gaps": "bars are used in order as published; missing hours are counted and reported; a gap longer than 24 hours inside an evaluated segment is an error"
+  },
+  "rule": {
+    "name": "sma_band",
+    "N_bars": 2400,
+    "band": 0.02,
+    "definition": "sma = mean of the last 2400 closes including the current bar. State becomes long when close > sma * 1.02, flat when close < sma * 0.98, otherwise unchanged. Initial state flat. No state until 2400 closes exist.",
+    "parameter_search": "none; one configuration. Any other rule or parameter is a new spec version."
+  },
+  "clock": {
+    "signal": "state after the close of bar i",
+    "execution": "that state is held from the open of bar i+1 to the open of bar i+2",
+    "warmup": "the state may use closes before a segment start (past data only)"
+  },
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "adverse_price_per_side": 0.0002,
+    "cost_per_side": 0.0012,
+    "applied": "equity is multiplied by (1 - 0.0012) on every entry and every exit"
+  },
+  "segments_utc": {
+    "backcheck": {"start": "2024-01-01", "end": "2026-11-01"},
+    "forward": {"start": "2026-11-17", "end": "2027-11-17"},
+    "rules": "each segment starts flat; no entry in its first 24 hours (embargo); an open position is closed at the segment end with exit cost"
+  },
+  "metrics": ["total net return (compounded)", "CAGR", "annualised Sharpe of hourly net returns (mean/std * sqrt(8760))", "max drawdown of the equity curve", "round trips", "exposure (fraction of bars long)"],
+  "baselines": ["cash (0 return) - the benchmark", "buy_and_hold with costs - reported for information only, not used for pass/fail"],
+  "backcheck_evaluation": {
+    "runs": 1,
+    "enforcement": "runner refuses a second backcheck run (exclusive marker file next to the data)",
+    "contamination": "This rule has never been run on 2024-01-01..2026-11-01, but v3 already showed that period: BTC buy-and-hold made +83% and a 30-day momentum rule +28.5%. A pass here is therefore weaker than a clean test and is labelled so.",
+    "pass_criteria_all_required": [
+      "total net return > 0",
+      "Sharpe > 0.5",
+      "max drawdown < 0.35",
+      "round trips >= 5"
+    ],
+    "if_fail": "stop this hypothesis; no forward phase",
+    "if_pass": "the rule is eligible for the forward phase; it is not a profitability claim"
+  },
+  "forward_evaluation": {
+    "what": "the same runner on klines published after this spec was committed; no orders, no VPS, paper only",
+    "runs": "verdict is computed once, on the full forward segment after 2027-11-17",
+    "interim_reads": "allowed for information; they never change the rule, costs or criteria. Any change is a new spec and the forward window restarts.",
+    "pass_criteria_all_required": [
+      "total net return > 0",
+      "max drawdown < 0.35"
+    ],
+    "reported_not_required": ["Sharpe", "round trips"]
+  },
+  "known_limits": [
+    "About 3 round trips a year: a one-year forward window holds only a handful of trades, so even a pass is weak statistical evidence.",
+    "The rule was picked as the best of 64 explored variants; part of its 2018-2023 result is selection luck.",
+    "The backcheck period is not fully unseen (see contamination).",
+    "Next-open fills ignore slippage beyond the 2 bp/side adjustment; fine for BTCUSDT spot at research size, not proof of live capacity.",
+    "In a long sideways or falling market the rule sits in cash or takes repeated small losses; positive return is not guaranteed in any given year."
+  ]
+}
