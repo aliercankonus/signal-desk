@@ -19,6 +19,7 @@ There is no SSH from Claude sessions. Everything goes through the Hostinger tool
 ## Deploy
 - CI publishes `ghcr.io/aliercankonus/signal-desk:main` after every merge to `main`. Confirm the publish job passed for the commit before deploying.
 - Deploy or update with `vps_docker_create`, `project_name: signal-desk`, `content`: the raw URL of `docker-compose.yml` on `main` (`https://raw.githubusercontent.com/aliercankonus/signal-desk/main/docker-compose.yml`). Same name replaces the project; the `data` volume is kept.
+- `vps_docker_create` does not pull a newer `:main` image; it reuses the cached one. After it, run `vps_docker_update` to pull and recreate, then check the new code is live (e.g. a new route or API field).
 - `vps_docker_create` replaces the project's environment too. Read the current one first with `vps_docker_get` and pass it back as `environment`, or the overview page's HTTPS route (`UI_PUBLIC`, `UI_HOST`, `UI_BASICAUTH`) turns off. Never print or commit `UI_BASICAUTH`.
 - `vps_docker_update` only pulls newer images into the compose file already on the VPS (`/docker/signal-desk/docker-compose.yml`). It does not apply changes to `docker-compose.yml` (healthchecks, env, volumes, services). If the merge touched the compose file, use `vps_docker_create` as above.
 - After deploy: `vps_docker_list` until `api` and `collector` are both healthy (the collector's healthcheck has a 120 s start period), then check logs once.
