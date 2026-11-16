@@ -1,0 +1,99 @@
+{
+  "experiment_version": "trades-only-btcusdt-spot-v1",
+  "review_status": "predeclared_not_executed",
+  "purpose": "Early, cheaper check for any edge in the S1 trade-flow idea using free historical trades, before the 60-day order-book collection for S1 completes. Not a substitute for S1.",
+  "symbol": "BTCUSDT",
+  "venue": "Binance spot",
+  "position_scope": "long_or_flat_research_only_paper_only",
+  "data_source": {
+    "url_pattern": "https://data.binance.vision/data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-{YYYY-MM-DD}.zip",
+    "checksum_pattern": "{zip_url}.CHECKSUM (sha256, '<hex>  <filename>')",
+    "csv_columns": ["trade_id", "price", "qty", "quote_qty", "time", "is_buyer_maker", "is_best_match"],
+    "time_unit": "milliseconds before 2025-01-01, microseconds from 2025-01-01; detected per value (>= 1e14 means microseconds)",
+    "aggressor": "is_buyer_maker=true means the seller was the aggressor (sell), false means buyer aggressor (buy)",
+    "missing_day_policy": "fail closed: every UTC day in the loaded range must be present and checksum-verified",
+    "order_policy": "fail closed if trade time decreases within a file or across consecutive files"
+  },
+  "window_utc": {
+    "start": "2026-08-01T00:00:00Z",
+    "validation_start": "2026-09-06T00:00:00Z",
+    "test_start": "2026-09-18T00:00:00Z",
+    "end": "2026-09-30T00:00:00Z",
+    "days": {"train": 36, "validation": 12, "test": 12},
+    "choice": "fixed before any data in this window was examined; most recent 60 complete days old enough to be published, ending well before this spec was written"
+  },
+  "clock": {
+    "time_base": "exchange trade time (historical files have no local receive time); caveat: no capture latency is modeled beyond execution_delay_seconds",
+    "bucket": "1-second buckets; bucket b holds trades with time in (b-1, b] seconds from range start",
+    "prediction_cadence_seconds": 30,
+    "grid": "UTC 30-second grid aligned to the window start",
+    "warmup_seconds": 60,
+    "max_trade_age_seconds": 10
+  },
+  "features": {
+    "signed_aggressor_qty_ratio_30s": "(buy_aggressor_qty - sell_aggressor_qty) / (buy_aggressor_qty + sell_aggressor_qty) over trades in (t-30s, t]; requires >= 2 trades in the window",
+    "momentum_60s": "last_price(t) / last_price(t-60s) - 1, where last_price(x) is the last trade at or before x",
+    "no_change": "constant 0 score: predicts no move, never enters"
+  },
+  "horizons_seconds": [60, 300],
+  "decision_rule": {
+    "rule": "at grid time t, if flat and score(t) > threshold, buy; sell exactly horizon_seconds later; long or flat only, one position at a time, signals while in a position are ignored",
+    "candidates": {
+      "flow_30s": {"feature": "signed_aggressor_qty_ratio_30s", "thresholds": [0.2, 0.4, 0.6]},
+      "momentum_60s": {"feature": "momentum_60s", "thresholds": [0.0005, 0.001, 0.002]}
+    },
+    "configurations": "each candidate threshold x each horizon = 12 configurations; this is the whole trial budget",
+    "parameter_searches_beyond_this_grid": 0
+  },
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "fee_note": "0.10% per side (0.20% round trip), no verified lower fee tier",
+    "execution_delay_seconds": 1,
+    "price_reference": "last trade price at or before t + execution_delay_seconds (entry) and t + horizon + execution_delay_seconds (exit); both must be <= max_trade_age_seconds old, otherwise the signal is skipped (entry) or the exit uses the stale price anyway and is flagged (exit)",
+    "adverse_price_adjustment_bps_per_side": 2.0,
+    "adverse_price_adjustment_breakdown": "1.0 bp half-spread (buy at the ask, sell at the bid) + 1.0 bp slippage; entry = ref * (1 + 2bp), exit = ref * (1 - 2bp)",
+    "net_return": "exit * (1 - fee) / (entry * (1 + fee)) - 1",
+    "round_trip_cost_approx_bps": 24,
+    "caveat": "No bid/ask or depth data in these files. Book side is approximated from the last trade plus a fixed half-spread and slippage. BTCUSDT spot's typical quoted spread is far below 1 bp, so this is meant to be conservative for small size, but it is an assumption, not a measurement. Queueing, partial fills and size beyond top-of-book are not modeled."
+  },
+  "chronological_split": {
+    "segments": "train [start, validation_start), validation [validation_start, test_start), test [test_start, end)",
+    "purge_seconds_before_each_boundary": 360,
+    "embargo_seconds_after_each_boundary": 360,
+    "purge_rule": "an entry at t is allowed only if t + horizon + execution_delay_seconds <= segment_end - purge (purge applies at the train/validation and validation/test boundaries and at window end)",
+    "embargo_rule": "the first eligible prediction in validation and test is at segment_start + embargo; train starts after warmup",
+    "no_shuffling": true,
+    "train_role": "in-sample diagnostics only; the rules are fixed and nothing is fitted"
+  },
+  "selection": {
+    "on": "validation only",
+    "metric": "mean net return per trade after costs",
+    "min_validation_trades": 300,
+    "tie_break": "more validation trades, then lower threshold, then shorter horizon",
+    "if_no_configuration_has_min_trades": "nothing is selected; verdict fail; test is not run",
+    "report_all_configurations": "all 12 validation results are reported (multiple-comparison caveat)"
+  },
+  "test_evaluation": {
+    "runs": 1,
+    "evaluates": "the single validation-selected configuration plus baselines on the test segment",
+    "enforcement": "runner refuses a second test run (exclusive marker file next to the data); changing anything after seeing test results spends the test set and must be reported"
+  },
+  "baselines": {
+    "no_trade": "0 trades, 0 return",
+    "no_change": "constant 0 score never exceeds a positive threshold: 0 trades, 0 return (economically identical to no_trade)",
+    "always_long_same_horizon": "score = +inf at every eligible grid time, same horizon, same costs and non-overlap rule as the selected configuration",
+    "buy_and_hold": "one round trip from the first to the last eligible time of the segment, same costs"
+  },
+  "metrics": ["trades", "hit_rate (net > 0)", "mean_gross_return", "mean_net_return", "t_stat of mean net return", "total_net_return (compounded)", "max_drawdown (compounded equity)", "stale_exit_count"],
+  "pass_criteria": {
+    "all_required": [
+      "test trades >= 300",
+      "test mean net return per trade > 0",
+      "test total net return (compounded) > 0",
+      "test mean net return per trade > always_long_same_horizon mean net return on test"
+    ],
+    "otherwise": "fail: stop or change the hypothesis in a new spec version; no tuning on test",
+    "meaning_of_pass": "evidence worth paying for the S1 order-book experiment's attention; not a profitability claim for live trading given the price-approximation caveat"
+  },
+  "limits": {"max_days_loaded": 60, "max_trades_per_day": 50000000}
+}
