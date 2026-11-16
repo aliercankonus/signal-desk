@@ -218,3 +218,38 @@ def test_pipeline_records_validation_and_io_delays(monkeypatch, tmp_path):
     assert metrics["max_write_ms"] >= metrics["max_validation_ms"]
     assert metrics["max_io_ms"] >= 0
 
+
+
+class DepthOnlyAfterBridge(FakeSocket):
+    """Depth keeps flowing after the bridge; no trades arrive (a quiet market)."""
+    def __init__(self, messages, next_id):
+        super().__init__(messages)
+        self.next_id = next_id
+
+    async def __anext__(self):
+        if self.messages.empty():
+            await asyncio.sleep(.002)
+            self.next_id += 1
+            return depth(self.next_id, self.next_id)
+        return await super().__anext__()
+
+
+def test_trade_lull_with_live_depth_does_not_resync(monkeypatch):
+    ws = DepthOnlyAfterBridge([depth(99, 100), depth(106, 107)], 107)
+    writes, statuses, _, _ = setup(monkeypatch, ws, [105])
+    market = collector.validate_config("unused")["venue"]["market_data"]
+    market["stale_trades_ms"] = 20  # feature threshold; must not drive resyncs
+    market["stale_l2_ms"] = 1000
+    assert asyncio.run(collector.run_stream_async("unused", max_events=150)) == 0
+    assert not any(s[0] == "RESYNCING" for s in statuses)
+    assert not any(e["event_type"] == "trade" for e in writes)
+
+
+def test_long_trade_outage_still_resyncs_with_its_reason(monkeypatch):
+    ws = DepthOnlyAfterBridge([depth(99, 100), depth(106, 107)], 107)
+    writes, statuses, _, _ = setup(monkeypatch, ws, [105])
+    collector.validate_config("unused")["venue"]["market_data"]["stale_l2_ms"] = 1000
+    monkeypatch.setattr(collector, "TRADE_FEED_STALE_SECONDS", 0.05)
+    assert asyncio.run(collector.run_stream_async("unused", max_events=100000)) == 2
+    assert statuses[-1][0] == "RESYNCING"
+    assert statuses[-1][1] == "Trade feed stale while depth messages continue"
