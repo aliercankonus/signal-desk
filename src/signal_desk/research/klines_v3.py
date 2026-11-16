@@ -44,18 +44,18 @@ def load_spec(path: Path) -> tuple[dict, str]:
 # ---- data -------------------------------------------------------------------
 
 def download(session, out_dir: Path, first_month: str, last_month: str, extra_days=(),
-             interval: str = "1d") -> list[Path]:
+             interval: str = "1d", symbol: str = SYMBOL) -> list[Path]:
     """Monthly kline zips first_month..last_month (YYYY-MM) plus optional daily zips."""
     out_dir.mkdir(parents=True, exist_ok=True)
     y, m = map(int, first_month.split("-"))
     names = []
     while f"{y:04d}-{m:02d}" <= last_month:
-        names.append(("monthly", f"{SYMBOL}-{interval}-{y:04d}-{m:02d}.zip"))
+        names.append(("monthly", f"{symbol}-{interval}-{y:04d}-{m:02d}.zip"))
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    names += [("daily", f"{SYMBOL}-{interval}-{d}.zip") for d in extra_days]
+    names += [("daily", f"{symbol}-{interval}-{d}.zip") for d in extra_days]
     paths = []
     for kind, name in names:
-        url = f"{BASE_URL}/{kind}/klines/{SYMBOL}/{interval}/{name}"
+        url = f"{BASE_URL}/{kind}/klines/{symbol}/{interval}/{name}"
         expected = parse_checksum(_get(session, url + ".CHECKSUM").text, name)
         body = _get(session, url).content
         if hashlib.sha256(body).hexdigest() != expected:

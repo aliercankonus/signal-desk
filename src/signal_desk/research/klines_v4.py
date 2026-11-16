@@ -39,10 +39,10 @@ def load_spec(path: Path) -> tuple[dict, str]:
     return json.loads(data), digest
 
 
-def load_bars(data_dir: Path, last_ts: int | None = None):
+def load_bars(data_dir: Path, last_ts: int | None = None, symbol: str = SYMBOL):
     """Verified (times, opens, closes); times are UTC epoch seconds of bar opens, ascending."""
     rows = {}
-    zips = sorted(data_dir.glob(f"{SYMBOL}-1h-*.zip"))
+    zips = sorted(data_dir.glob(f"{symbol}-1h-*.zip"))
     if not zips:
         raise KlinesError(f"no 1h kline zips in {data_dir}")
     for path in zips:
@@ -80,8 +80,11 @@ def states(closes, n: int, band: float) -> list[int]:
     return s
 
 
-def simulate(pos, times, opens, a: int, b: int, cost: float, embargo_s: int = 24 * HOUR) -> dict:
-    """Bars a..b-1; pos[d] is held from opens[d] to opens[d+1]; exit at opens[b]."""
+def simulate(pos, times, opens, a: int, b: int, cost: float, embargo_s: int = 24 * HOUR,
+             curve: list | None = None) -> dict:
+    """Bars a..b-1; pos[d] is held from opens[d] to opens[d+1]; exit at opens[b].
+
+    If curve is a list, (time, equity) after each bar is appended to it."""
     eq, held, rets, entries, long_bars, peak, mdd = 1.0, 0, [], 0, 0, 1.0, 0.0
     for d in range(a, b):
         if times[d + 1] - times[d] > 24 * HOUR:
@@ -98,6 +101,8 @@ def simulate(pos, times, opens, a: int, b: int, cost: float, embargo_s: int = 24
         if d == b - 1 and held:
             eq *= 1 - cost
         rets.append(eq / start - 1)
+        if curve is not None:
+            curve.append((times[d + 1], eq))
         peak = max(peak, eq)
         mdd = max(mdd, 1 - eq / peak)
     n = len(rets)
