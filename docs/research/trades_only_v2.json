@@ -1,0 +1,107 @@
+{
+  "experiment_version": "trades-only-btcusdt-spot-v2",
+  "review_status": "predeclared_not_executed",
+  "supersedes": "trades-only-btcusdt-spot-v1 (FAIL; see trades_only_v1_results.md). New hypothesis, not a retune: v1 showed about +1-2 bp gross edge at 1-5 minute fixed holds against about 24 bp round-trip cost.",
+  "hypothesis": "Fewer, more selective entries on 15-60 minute signals, with rule-based exits that let winners run (up to 24h), produce mean moves per trade large enough to clear about 24 bp round-trip cost.",
+  "symbol": "BTCUSDT",
+  "venue": "Binance spot",
+  "position_scope": "long_or_flat_research_only_paper_only",
+  "data_source": {
+    "same_as": "trades_only_v1.json data_source (daily trade zips, SHA-256 verified against .CHECKSUM, fail closed on missing days or decreasing time)"
+  },
+  "window_utc": {
+    "start": "2026-09-01T00:00:00Z",
+    "validation_start": "2026-10-01T00:00:00Z",
+    "test_start": "2026-10-24T00:00:00Z",
+    "end": "2026-11-15T00:00:00Z",
+    "days": {"train": 30, "validation": 23, "test": 22},
+    "choice": "fixed before any data from 2026-10-01 onward was examined. Train overlaps v1 data (2026-09); it is diagnostics only and nothing is fitted on it. Validation and test are data no earlier experiment has looked at."
+  },
+  "clock": {
+    "time_base": "exchange trade time; 1-second buckets as in v1 (bucket b holds trades with time in (b-1, b])",
+    "entry_grid_seconds": 60,
+    "grid": "UTC 60-second grid aligned to the window start",
+    "warmup_seconds": 3600,
+    "max_trade_age_seconds_at_entry": 10,
+    "price_exit_check": "every 1-second bucket, using the last trade price at or before that second",
+    "signal_exit_check": "every entry-grid time (60s)"
+  },
+  "features": {
+    "momentum_15m": "last_price(t) / last_price(t-900s) - 1",
+    "momentum_60m": "last_price(t) / last_price(t-3600s) - 1",
+    "flow_15m": "(buy_aggressor_qty - sell_aggressor_qty) / (buy_aggressor_qty + sell_aggressor_qty) over trades in (t-900s, t]; requires >= 100 trades in the window",
+    "no_change": "constant 0 score: never enters"
+  },
+  "entries": {
+    "rule": "at a grid time t, if flat and score(t) > threshold, buy at t + execution_delay; long or flat only, one position at a time, new signals ignored while in a position",
+    "candidates": {
+      "mom15": {"feature": "momentum_15m", "thresholds": [0.003, 0.006]},
+      "mom60": {"feature": "momentum_60m", "thresholds": [0.005, 0.01]},
+      "flow15": {"feature": "flow_15m", "thresholds": [0.1, 0.2]}
+    }
+  },
+  "exits": {
+    "common": "every position also closes at max_hold_seconds = 86400 after entry, and is force-closed at its segment end (counted as forced_exit). Exit price is the last trade at or before trigger_time + execution_delay. Price levels are measured on reference (last-trade) prices from the entry reference price, before the adverse adjustment.",
+    "rules": {
+      "tp_sl": "sell at the first second where price >= entry_ref * (1 + 0.0060) or price <= entry_ref * (1 - 0.0030)",
+      "signal_reversal": "sell at the first grid time where the entry feature's score < 0",
+      "trailing_stop": "sell at the first second where price <= max(price since entry) * (1 - 0.0040)",
+      "fixed_4h": "sell at entry + 14400s (a plain longer horizon, as a control)"
+    },
+    "one_parameter_set_per_rule": true
+  },
+  "configurations": "6 entries (3 candidates x 2 thresholds) x 4 exit rules = 24 configurations; this is the whole trial budget",
+  "parameter_searches_beyond_this_grid": 0,
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "fee_note": "0.10% per side (0.20% round trip), no verified lower fee tier",
+    "execution_delay_seconds": 1,
+    "adverse_price_adjustment_bps_per_side": 2.0,
+    "adverse_price_adjustment_breakdown": "1.0 bp half-spread + 1.0 bp slippage; entry = ref * (1 + 2bp), exit = ref * (1 - 2bp)",
+    "net_return": "exit * (1 - fee) / (entry * (1 + fee)) - 1",
+    "round_trip_cost_approx_bps": 24,
+    "caveat": "Same as v1: no bid/ask or depth in these files; book side is approximated from the last trade plus a fixed half-spread and slippage. Additional v2 caveat: stop-loss and trailing-stop exits are modeled as market sells 1s after the trigger at the then-last trade price; in fast moves real stop fills can be worse than this. Stop-triggered exits are counted separately so their share is visible."
+  },
+  "chronological_split": {
+    "segments": "train [start, validation_start), validation [validation_start, test_start), test [test_start, end)",
+    "entry_cutoff_seconds_before_segment_end": 3600,
+    "embargo_seconds_after_each_boundary": 3600,
+    "no_cross_segment_labels": "positions never use prices from a later segment: they are force-closed at the segment end",
+    "embargo_rule": "first eligible entry in validation and test is at segment_start + embargo (covers the longest feature lookback); train starts after warmup",
+    "no_shuffling": true,
+    "train_role": "in-sample diagnostics only; nothing is fitted"
+  },
+  "selection": {
+    "on": "validation only",
+    "metric": "mean net return per trade after costs",
+    "min_validation_trades": 100,
+    "tie_break": "more validation trades, then lower threshold, then exit rule order tp_sl, signal_reversal, trailing_stop, fixed_4h",
+    "if_no_configuration_has_min_trades": "nothing is selected; verdict fail; test is not run",
+    "report_all_configurations": "all 24 validation results are reported (multiple-comparison caveat)"
+  },
+  "test_evaluation": {
+    "runs": 1,
+    "evaluates": "the single validation-selected configuration plus baselines on the test segment",
+    "enforcement": "runner refuses a second test run (exclusive marker file next to the data); changing anything after seeing test results spends the test set and must be reported"
+  },
+  "baselines": {
+    "no_trade": "0 trades, 0 return",
+    "no_change": "constant 0 score never exceeds a positive threshold: 0 trades (identical to no_trade)",
+    "always_long_same_exit": "enter at every eligible grid time when flat, with the selected configuration's exit rule (for signal_reversal: the selected feature's reversal), same costs",
+    "buy_and_hold": "one round trip from the first to the last eligible time of the segment, same costs"
+  },
+  "metrics": ["trades", "hit_rate (net > 0)", "mean_gross_return", "mean_net_return", "t_stat of mean net return", "total_net_return (compounded)", "max_drawdown (compounded equity)", "mean_hold_seconds", "exit_reason_counts (take_profit, stop_loss, trailing_stop, signal_reversal, time, max_hold, forced)", "time_in_market_fraction"],
+  "pass_criteria": {
+    "all_required": [
+      "test trades >= 100",
+      "test mean net return per trade > 0",
+      "test total net return (compounded) > 0",
+      "test t_stat of mean net return >= 2.0",
+      "test mean net return per trade > always_long_same_exit mean net return on test"
+    ],
+    "why_t_stat": "fewer, longer trades than v1, so a positive mean alone could be luck; t >= 2 is required on the single test run",
+    "otherwise": "fail: stop or change the hypothesis in a new spec version; no tuning on test",
+    "meaning_of_pass": "evidence worth building S1 v2 around (order-book features at longer holds); not a profitability claim for live trading given the price-approximation caveat"
+  },
+  "limits": {"max_days_loaded": 60, "max_trades_per_day": 50000000}
+}
