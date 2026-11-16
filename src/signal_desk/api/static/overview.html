@@ -19,6 +19,10 @@ header { background: #12161d; border-bottom: 1px solid var(--line); }
 .chip { font: 12px var(--mono); color: var(--muted); border: 1px solid #2e3541; border-radius: 6px; padding: 4px 8px; }
 .chip.paper { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .chip.danger { color: var(--bg); background: var(--bad); border-color: var(--bad); font-weight: 600; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; border-radius: 6px; }
+nav a:hover { color: var(--text); background: #1a2029; }
+nav a[aria-current="page"] { color: var(--text); background: #1f2630; font-weight: 600; }
 .updated { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
 #alert { display: none; background: #3a1416; border-bottom: 1px solid var(--bad); color: #ffd8d3; }
 #alert.on { display: block; }
@@ -64,6 +68,7 @@ dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anyw
     <span class="chip" id="venue">…</span>
     <span class="chip paper" id="mode">…</span>
     <span class="chip">Phase 1 · Data collection</span>
+    <nav aria-label="Main"><a href="/" aria-current="page">Overview</a><a href="/sessions">Sessions</a></nav>
     <span class="updated" id="updated">loading…</span>
   </div>
 </header>

@@ -14,9 +14,9 @@ PYTHONPATH=src python -m pytest -q
 CI publishes `ghcr.io/aliercankonus/signal-desk:main` on every merge to `main`. `docker-compose.yml` uses that image and needs no build context, so it can be deployed directly through the Hostinger Docker manager.
 
 ## Operator overview
-The `api` service serves a read-only overview page at `/` (collector state and health, raw days, disk, alarms, gate progress) backed by `GET /api/status`.
+The `api` service serves read-only pages: the overview at `/` (collector state and health, raw days, disk, alarms, gate progress, backed by `GET /api/status`) and sessions at `/sessions` (one cell per UTC raw day with files, compression and expiry, backed by `GET /api/sessions`).
 
-On the VPS the page is also served over HTTPS by Traefik behind basic auth, at the host set in the project environment (`UI_PUBLIC=true`, `UI_HOST`, `UI_BASICAUTH` as a single-quoted htpasswd bcrypt line). Without those variables the route is off. Only `/` and `/api/status` are routed; port 8080 stays bound to `127.0.0.1`. Locally, or without the route, use an SSH tunnel and browse to http://localhost:8080:
+On the VPS the page is also served over HTTPS by Traefik behind basic auth, at the host set in the project environment (`UI_PUBLIC=true`, `UI_HOST`, `UI_BASICAUTH` as a single-quoted htpasswd bcrypt line). Without those variables the route is off. Only the two pages and their `/api/` data are routed; port 8080 stays bound to `127.0.0.1`. Locally, or without the route, use an SSH tunnel and browse to http://localhost:8080:
 ```bash
 ssh -L 8080:127.0.0.1:8080 <user>@<vps-host>
 ```

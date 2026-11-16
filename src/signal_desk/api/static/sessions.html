@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>signal-desk · sessions</title>
+<style>
+:root {
+  --bg: #0e1116; --panel: #161b22; --inset: #0e1116; --line: #262c36; --text: #e6edf3;
+  --muted: #a8b3c2; --faint: #8b96a5; --accent: #79b8ff; --ok: #56d364; --warn: #f0b429; --bad: #ff7b72; --pin: #d2a8ff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: #12161d; border-bottom: 1px solid var(--line); }
+.wrap { max-width: 1360px; margin: 0 auto; padding: 14px 16px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.chip { font: 12px var(--mono); color: var(--muted); border: 1px solid #2e3541; border-radius: 6px; padding: 4px 8px; }
+.chip.paper { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; border-radius: 6px; }
+nav a:hover { color: var(--text); background: #1a2029; }
+nav a[aria-current="page"] { color: var(--text); background: #1f2630; font-weight: 600; }
+.updated { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+main { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; }
+h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; }
+.main { flex: 999 1 600px; min-width: 0; }
+.side { flex: 1 1 320px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.stat .k { font: 11px var(--mono); color: var(--muted); }
+.stat .v { font: 600 20px var(--mono); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--muted); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.scroll { overflow-x: auto; }
+.cal { min-width: 290px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wd { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+.cell { min-height: 46px; border-radius: 6px; border: 1px solid transparent; font: 600 12px var(--mono); display: flex; align-items: center; justify-content: space-between; padding: 0 8px; cursor: pointer; color: var(--bg); background: transparent; }
+.cell.collected { background: var(--accent); }
+.cell.missing { background: var(--bad); }
+.cell.open { background: #1b2a3d; color: var(--text); border-color: var(--accent); }
+.cell.future { color: #6b7685; border: 1px dashed #4a5361; cursor: default; }
+.cell.blank { visibility: hidden; }
+.cell.pinned { box-shadow: inset 0 0 0 2px var(--pin); }
+.cell[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 1px; }
+.cell .w { font-size: 10px; font-weight: 500; opacity: .85; }
+.note { font-size: 13px; color: var(--muted); }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13px; }
+dt { color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
+.pill { font: 600 11px var(--mono); color: var(--bg); border-radius: 999px; padding: 4px 10px; }
+table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 4px; border-bottom: 1px solid #1c222b; overflow-wrap: anywhere; }
+td.r, th.r { text-align: right; }
+td + td, th + th { white-space: nowrap; }
+.callout { background: #2a2312; border: 1px solid #5c4a1a; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #f5e2b8; }
+@media (max-width: 600px) { .cal { gap: 4px; } .cell { padding: 0; justify-content: center; font-size: 11px; min-height: 44px; } .cell .w { display: none; } }
+#error { display: none; color: var(--bad); font: 12px var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <span class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>signal-desk</span>
+    <span class="chip paper">PAPER · read-only</span>
+    <nav aria-label="Main"><a href="/">Overview</a><a href="/sessions" aria-current="page">Sessions</a></nav>
+    <span class="updated" id="updated">loading…</span>
+  </div>
+</header>
+
+<main>
+  <div class="bar">
+    <h1>Sessions &amp; raw days</h1>
+    <span id="error" role="status"></span>
+  </div>
+
+  <section class="stats" aria-label="Summary">
+    <div class="stat"><span class="k">days collected</span><span class="v" id="s-days">–</span></div>
+    <div class="stat"><span class="k">missing days</span><span class="v" id="s-missing">–</span></div>
+    <div class="stat"><span class="k">S1 window</span><span class="v" id="s-window">–</span></div>
+    <div class="stat"><span class="k">raw on disk</span><span class="v" id="s-bytes">–</span></div>
+    <div class="stat"><span class="k">compressed days</span><span class="v" id="s-gz">–</span></div>
+  </section>
+
+  <section class="row">
+    <div class="card main">
+      <div class="legend">
+        <span><i class="sw" style="background: var(--accent)"></i>collected</span>
+        <span><i class="sw" style="background: #1b2a3d; border: 1px solid var(--accent)"></i>today (open)</span>
+        <span><i class="sw" style="background: var(--bad)"></i>missing (no raw files)</span>
+        <span><i class="sw" style="border: 1px dashed #4a5361"></i>not yet</span>
+        <span><i class="sw" style="box-shadow: inset 0 0 0 2px var(--pin)"></i>pinned</span>
+      </div>
+      <div class="scroll"><div class="cal" id="cal" role="group" aria-label="UTC days"></div></div>
+      <div class="callout">Per-day gaps, reconnects and raw-audit results are not recorded yet, so this page shows which days have data, not whether each day is clean.</div>
+    </div>
+
+    <aside class="card side" aria-label="Day detail">
+      <div class="bar" style="justify-content: space-between">
+        <h2 id="d-date" class="mono" style="font: 600 17px var(--mono)">–</h2>
+        <span class="pill" id="d-pill">–</span>
+      </div>
+      <dl id="d-info"></dl>
+      <table aria-label="Files">
+        <thead><tr><th>file</th><th>kind</th><th class="r">size</th></tr></thead>
+        <tbody id="d-files"></tbody>
+      </table>
+      <span class="note">Pinning a day is a config change (<code>retention.raw_pinned_days</code>) through a PR.</span>
+    </aside>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const fmtBytes = (b) => {
+  if (b === undefined || b === null) return "–";
+  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; let v = b;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + " " + u[i];
+};
+const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const LABEL = { collected: "COLLECTED", missing: "MISSING", open: "OPEN", future: "NOT YET" };
+const COLOR = { collected: "var(--accent)", missing: "var(--bad)", open: "var(--accent)", future: "#4a5361" };
+let data = null;
+let selected = null;
+
+function el(tag, attrs, text) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function renderDetail() {
+  const byDay = new Map(data.days.map((d) => [d.day, d]));
+  const d = byDay.get(selected) || { day: selected, state: "future", files: [], bytes: 0, pinned: false };
+  $("d-date").textContent = d.day;
+  $("d-pill").textContent = LABEL[d.state];
+  $("d-pill").style.background = COLOR[d.state];
+  const info = $("d-info"); info.replaceChildren();
+  const rows = d.state === "future" ? [["state", "not collected yet"]] : [
+    ["state", d.state === "open" ? "open (still being written)" : d.state],
+    ["raw size", fmtBytes(d.bytes)],
+    ["files", String(d.files.length)],
+    ["compressed", d.files.length ? (d.compressed ? "yes (.gz)" : "no (.jsonl)") : "–"],
+    ["expires", d.pinned ? "never (pinned)" : (d.expires_day || "–")],
+    ["quality", "not recorded"],
+  ];
+  for (const [k, v] of rows) info.append(el("dt", {}, k), el("dd", {}, v));
+  const tbody = $("d-files"); tbody.replaceChildren();
+  for (const f of d.files) {
+    const tr = el("tr");
+    tr.append(el("td", {}, f.name), el("td", {}, f.kind), el("td", { class: "r" }, fmtBytes(f.bytes)));
+    tbody.append(tr);
+  }
+  if (!d.files.length) { const tr = el("tr"); tr.append(el("td", { colspan: "3" }, "no files")); tbody.append(tr); }
+  for (const b of document.querySelectorAll(".cell[data-day]")) b.setAttribute("aria-pressed", String(b.dataset.day === selected));
+}
+
+function render() {
+  const days = data.days;
+  const collected = days.filter((d) => d.state !== "missing").length;
+  $("s-days").textContent = String(collected);
+  $("s-missing").textContent = String(days.filter((d) => d.state === "missing").length);
+  $("s-window").textContent = `${collected} / ${data.s1_window_days}`;
+  $("s-bytes").textContent = fmtBytes(days.reduce((a, d) => a + d.bytes, 0));
+  $("s-gz").textContent = String(days.filter((d) => d.compressed).length);
+
+  const start = data.first_day || data.today;
+  const lastData = days.length ? days[days.length - 1].day : data.today;
+  const windowEnd = addDays(start, data.s1_window_days - 1);
+  const end = windowEnd > lastData ? windowEnd : lastData;
+  const byDay = new Map(days.map((d) => [d.day, d]));
+  if (!selected) selected = data.today;
+
+  const cal = $("cal"); cal.replaceChildren();
+  for (const w of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) cal.append(el("div", { class: "wd" }, w));
+  const lead = (new Date(start + "T00:00:00Z").getUTCDay() + 6) % 7;
+  for (let i = 0; i < lead; i++) cal.append(el("div", { class: "cell blank", "aria-hidden": "true" }));
+  for (let day = start; day <= end; day = addDays(day, 1)) {
+    const d = byDay.get(day);
+    const state = d ? d.state : "future";
+    const cls = "cell " + state + (d && d.pinned ? " pinned" : "");
+    const btn = el("button", { type: "button", class: cls, "data-day": day, "aria-label": `${day} ${LABEL[state]}`, "aria-pressed": "false" });
+    if (state === "future") btn.disabled = true;
+    btn.append(el("span", {}, day.slice(5)));
+    if (day === windowEnd) btn.append(el("span", { class: "w", title: "end of the 60-day S1 window" }, "S1"));
+    btn.addEventListener("click", () => { selected = day; renderDetail(); });
+    cal.append(btn);
+  }
+  renderDetail();
+  $("updated").textContent = "updated " + data.generated_ts.slice(11, 19) + " UTC · every 30 s";
+}
+
+async function tick() {
+  try {
+    const res = await fetch("/api/sessions", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    data = await res.json();
+    render();
+    $("error").style.display = "none";
+  } catch (err) {
+    $("error").textContent = "API unreachable: " + err.message + " (showing last data)";
+    $("error").style.display = "inline";
+  }
+}
+tick();
+setInterval(tick, 30000);
+</script>
+</body>
+</html>
