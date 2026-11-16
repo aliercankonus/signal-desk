@@ -1,0 +1,80 @@
+{
+  "experiment_version": "klines-hourly-trend-ensemble-btc-eth-spot-v6",
+  "review_status": "predeclared_not_executed",
+  "hypothesis": "An equal-weight BTC+ETH portfolio, each coin's exposure set by the average of four slow SMA-band trend signals, earns a positive after-cost return versus cash with a lower drawdown than holding.",
+  "origin": {
+    "exploration": "About 400 hourly rule configurations on BTCUSDT and ETHUSDT, train 2018-08-01..2022-01-01, validation 2022-01-02..2024-01-01, cost 0.0012 per side. Data after 2023-12-31 was not used for selection.",
+    "families_rejected": "RSI dip-buying, Bollinger mean reversion, hour-of-day and weekday seasonality, taker-buy ratio, volume breakout, EMA cross, Donchian, time-series momentum: negative or near-zero validation after costs, or train-only.",
+    "why_an_ensemble": "Single SMA lengths were unstable in validation (50/50 portfolio validation Sharpe 0.75 at 1200h, 0.23 at 1800h, 0.43 at 2400h, 0.92 at 4800h, 0.01 at 7200h). Averaging lengths avoids picking a lucky peak.",
+    "exploration_numbers_for_this_rule": "50/50 portfolio: train +1284% (Sharpe 1.70, max DD 43%), validation +44% (Sharpe 0.78, max DD 21%, 25 round trips); buy-and-hold validation -25% (max DD 70%). Shifted-position timing test over 2018-08..2023: p = 0.017 (BTC), 0.003 (ETH). Exploration numbers are not evidence; this spec fixes the rule before any run on later data.",
+    "relation_to_v4_v5": "v4 (BTC, SMA 2400h) and its forward phase are unchanged. v5 (v4 rule on 20 altcoins) failed; this spec does not use those coins."
+  },
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "venue": "binance_spot",
+  "position_scope": "each coin long a fraction 0, 0.25, 0.5, 0.75 or 1 of its sleeve, rest in cash; no leverage, no shorting, paper research only",
+  "data_source": {
+    "files": "https://data.binance.vision/data/spot/monthly/klines/{SYMBOL}/1h/{SYMBOL}-1h-YYYY-MM.zip (and the daily/ files for days after the last full month)",
+    "checksum": "every zip verified against its .CHECKSUM (sha256) before use",
+    "months": "2023-05 onward (4800-bar warm-up before 2024-01-01)",
+    "columns_used": "open_time, open, close",
+    "timestamp_unit": "milliseconds before 2025, microseconds from 2025; the runner normalises to UTC hours",
+    "gaps": "bars are used in order as published; missing hours are counted and reported per coin; a gap longer than 24 hours inside an evaluated segment is an error"
+  },
+  "rule": {
+    "name": "sma_band_ensemble",
+    "lengths_bars": [480, 1200, 2400, 4800],
+    "band": 0.02,
+    "sub_signal": "for each length N: sma = mean of the last N closes including the current bar; state 1 when close > sma * 1.02, state 0 when close < sma * 0.98, otherwise unchanged; initial state 0",
+    "exposure": "per coin: mean of the four sub-signal states",
+    "parameter_search": "none; lengths and band are fixed by this spec"
+  },
+  "clock": {
+    "signal": "exposure after the close of bar i",
+    "execution": "that exposure is held from the open of bar i+1 to the open of bar i+2",
+    "warmup": "signals may use closes before a segment start (past data only)"
+  },
+  "portfolio": {
+    "weights": "starting capital split 1/2 per coin; each sleeve compounds on its own; no rebalancing between sleeves",
+    "equity": "portfolio equity at each UTC hour = mean of the two sleeve equities"
+  },
+  "execution_and_costs": {
+    "fee_per_side": 0.001,
+    "adverse_price_per_side": 0.0002,
+    "cost_per_side": 0.0012,
+    "applied": "on every exposure change, sleeve equity is multiplied by (1 - 0.0012 * |change in exposure|)"
+  },
+  "segments_utc": {
+    "backcheck": {"start": "2024-01-01", "end": "2026-11-01"},
+    "forward": {"start": "2026-11-17", "end": "2027-11-17"},
+    "rules": "each segment starts at exposure 0; no entry in its first 24 hours (embargo); open exposure is closed at the segment end with exit cost"
+  },
+  "metrics": {
+    "portfolio": ["total net return (compounded)", "CAGR", "annualised Sharpe of hourly portfolio returns (mean/std * sqrt(8760))", "max drawdown", "round trips (sum over coins and sub-signals of 0->1 transitions)", "average exposure"],
+    "per_coin": ["net return", "max drawdown", "round trips", "average exposure", "missing hours"]
+  },
+  "baselines": ["cash (0 return) - the benchmark", "50/50 buy-and-hold of BTC and ETH with costs - information only, not used for pass/fail", "v4 rule on the same two coins - information only"],
+  "backcheck_evaluation": {
+    "runs": 1,
+    "enforcement": "runner refuses a second backcheck run (exclusive marker file next to the data)",
+    "contamination": "SPENT WINDOW. BTC 2024-01-01..2026-11-01 was used by v3 and v4, ETH by v5 (v4 rule: ETH +51.8%, max DD 46.1%). The author knows the market path. The backcheck is a sanity check, not an out-of-sample test, and is reported as such.",
+    "pass_criteria_all_required": ["portfolio total net return > 0", "portfolio Sharpe > 0.5", "portfolio max drawdown < 0.35"],
+    "reported_not_required": ["round trips (expected well under 100)", "per-coin results", "baselines"],
+    "if_fail": "stop this hypothesis; no forward phase",
+    "if_pass": "eligible for the forward phase; not a profitability claim"
+  },
+  "forward_evaluation": {
+    "what": "the same runner on klines published after this spec was committed; no orders, no VPS, paper only",
+    "runs": "verdict computed once, on the full forward segment after 2027-11-17",
+    "interim_reads": "allowed for information; they never change the rule, costs or criteria. Any change is a new spec and the forward window restarts.",
+    "pass_criteria_all_required": ["portfolio total net return > 0", "portfolio max drawdown < 0.35"],
+    "reported_not_required": ["Sharpe", "round trips", "baselines"]
+  },
+  "known_limits": [
+    "Round trips are few (exploration: about 13 a year for the portfolio). Even a forward pass is weak statistical evidence; fewer than a few hundred trades is not proof.",
+    "About 400 configurations were explored; part of the exploration result is selection luck.",
+    "BTC and ETH are highly correlated; two coins are not two independent tests.",
+    "The edge in exploration came mostly from avoiding bear markets (2022: rule -17%, hold -66%); in bull years the rule lags holding and in sideways markets it can take repeated small losses.",
+    "ETH trend signals were much weaker than BTC in 2022-2023 validation.",
+    "Next-open fills with 2 bp/side adverse price; fine for BTC/ETH spot at research size, not proof of live capacity."
+  ]
+}
