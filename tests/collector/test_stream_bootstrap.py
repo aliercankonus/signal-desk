@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -210,13 +211,28 @@ def test_pipeline_records_validation_and_io_delays(monkeypatch, tmp_path):
     def slow_validation(*args):
         time.sleep(.08)
     monkeypatch.setattr(collector, "validate_json", slow_validation)
-    monkeypatch.setattr(collector, "append_jsonl", lambda *args: None)
+    monkeypatch.setattr(collector, "append_jsonl", lambda *args, **kw: None)
     monkeypatch.setattr(collector, "write_event", original_write)
     assert run() == 0
     metrics = config["_pipeline_metrics"]
     assert metrics["max_validation_ms"] >= 60
     assert metrics["max_write_ms"] >= metrics["max_validation_ms"]
     assert metrics["max_io_ms"] >= 0
+
+
+def test_fsync_is_batched_per_file(monkeypatch, tmp_path):
+    original_write = collector.write_event
+    ws = FakeSocket([depth(99, 100), depth(106, 107), trade()])
+    setup(monkeypatch, ws, [105])
+    config = collector.validate_config("unused")
+    config["storage"] = {"raw_path": str(tmp_path)}
+    calls = []
+    monkeypatch.setattr(collector, "append_jsonl",
+                        lambda path, event, fsync: calls.append((Path(path).name.split("_")[2], fsync)))
+    monkeypatch.setattr(collector, "write_event", original_write)
+    assert run() == 0
+    # Snapshot and first trade each start a file and sync; the delta right after the snapshot waits.
+    assert calls == [("depth", True), ("depth", False), ("trade", True)]
 
 
 

@@ -6,14 +6,15 @@ from pathlib import Path
 from typing import Any
 
 
-def append_jsonl(path: str | Path, obj: dict[str, Any]) -> None:
+def append_jsonl(path: str | Path, obj: dict[str, Any], *, fsync: bool = True) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n"
     with path.open("a", encoding="utf-8") as f:
         f.write(line)
         f.flush()
-        os.fsync(f.fileno())
+        if fsync:
+            os.fsync(f.fileno())
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
