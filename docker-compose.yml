@@ -28,6 +28,13 @@ services:
     cpus: 0.75
     pids_limit: 64
     restart: "no"
+    # Visibility only: marks a stalled or HALTed collector "unhealthy"; nothing restarts it.
+    healthcheck:
+      test: ["CMD", "python", "-m", "signal_desk.collector.healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 2
+      start_period: 120s
     stop_grace_period: 20s
     logging:
       driver: json-file

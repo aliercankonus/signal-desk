@@ -28,7 +28,7 @@ Status (2026-11-16):
 
 Status (2026-11-16):
 - [x] Collector reconnect loop fixed (#9). It reconnected about every 2 min ("Timed out waiting for market data") because a 3 s lull in trades triggered a full resync even while depth was fresh. The session now only resyncs after a 60 s trade outage, and stale feeds report their real reason. `stale_trades_ms` (3 s) still governs feature validity. Redeployed 11:29 UTC; 0 reconnects in the first 4 min (the old build had ~2 by then).
-- [x] Daily read-only VPS check scheduled at 07:23 UTC in a dedicated cloud session.
+- [x] Hourly read-only VPS check (at :23) in a dedicated cloud session; collector has a Docker healthcheck (status file fresh and not HALT), visibility only, no auto-restart.
 - [x] Allow rules for the Hostinger tools in `.claude/settings.json`, under both tool names (`mcp__hostinger__*` and the connector-ID form used in cloud sessions) (#3, #7, #8). The `vps-status` agent now works in cloud sessions.
 - [ ] Owner: set the Hostinger connector's Execute and Multi-execute tools to "Always allow" (claude.ai, Connectors). Until then the connector's own policy asks for approval on every `execute` call, and repo allow rules can't override it.
 - [ ] Confirm overnight stability from the first daily check: reconnect_count near zero, gap_count 0.
