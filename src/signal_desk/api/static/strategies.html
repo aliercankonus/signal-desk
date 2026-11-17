@@ -129,7 +129,7 @@ function card(name, s) {
   const pos = typeof s.position === "object"
     ? Object.entries(s.position).map(([k, v]) => k + " " + Math.round(v * 100) + "% long").join(", ")
     : (s.position ? (name === "carry-v1" ? "on (long spot, short perp)" : "long") : "flat (cash)");
-  c.append(el("p", { class: "note" }, "Position now: " + pos + " · data through " + tm(s.data_through) + " UTC"));
+  c.append(el("p", { class: "note" }, "Position now: " + pos + " · data through " + tm(s.data_through) + " UTC" + (s.source ? " · latest hours from Binance's live feed (unverified until the daily file arrives)" : "")));
   if (name === "v6") c.append(el("p", { class: "note" }, "Each v6 trade uses 1/8 of capital (2 coins × 4 lengths); the net return on top is for the whole portfolio."));
   if (!s.trades.length) {
     c.append(el("p", { class: "note" }, "No trades yet."));
@@ -171,6 +171,7 @@ async function load() {
     for (const [name, s] of Object.entries(data.strategies)) list.append(card(name, s));
     $("error").style.display = data.download_error ? "block" : "none";
     $("error").textContent = data.download_error ? "Download problem: " + data.download_error : "";
+    if (data.live_error && !data.download_error) { $("error").style.display = "block"; $("error").textContent = "Live feed problem (using daily files only): " + data.live_error; }
   } catch (e) {
     $("error").style.display = "block";
     $("error").textContent = "Could not load strategies: " + e.message;

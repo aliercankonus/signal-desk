@@ -2,17 +2,22 @@
 
 Downloads public Binance files into <base_path>/research, runs each runner's interim read with its
 pinned spec (rules unchanged), and writes strategies.json. Read-only research: no orders, no keys.
+v4/v6 also read closed hourly bars from Binance's public REST API (no key, owner-approved 2026-11-17)
+past the last verified daily file; those bars are unverified and replaced once the daily file lands.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
 import json
+import io
 import os
 from pathlib import Path
+import shutil
 import sys
 import threading
 import time
+import zipfile
 
 from signal_desk.research import carry_v1, klines_v4, klines_v6
 from signal_desk.research.binance_trades_download import parse_checksum
@@ -20,6 +25,8 @@ from signal_desk.research.klines_v3 import BASE_URL as SPOT_URL, KlinesError, _g
 
 SPECS = Path(__file__).resolve().parents[3] / "docs/research"
 FUT_URL = carry_v1.FUTURES_URL
+LIVE_URL = "https://api.binance.com/api/v3/klines"
+SYMBOLS = ("BTCUSDT", "ETHUSDT")
 
 
 def _root(config: dict) -> Path:
@@ -66,7 +73,7 @@ def sync(session, base: str, path: str, name: str, out: Path, first_month: str, 
 
 
 def download_all(session, root: Path, today) -> None:
-    for sym in ("BTCUSDT", "ETHUSDT"):
+    for sym in SYMBOLS:
         sync(session, SPOT_URL, f"klines/{sym}/1h", f"{sym}-1h", root / "klines" / sym, "2023-05", today)
     carry = root / "carry"
     sync(session, FUT_URL, "klines/BTCUSDT/1h", "BTCUSDT-1h", carry / "perp", "2026-10", today)
@@ -75,6 +82,36 @@ def download_all(session, root: Path, today) -> None:
     spot = carry / "spot"
     if not spot.exists():
         spot.symlink_to(Path("..") / "klines" / "BTCUSDT")
+
+
+def build_live(session, root: Path, now_s: int) -> dict:
+    """<root>/live/<sym>: links to the verified zips plus one zip of closed REST bars after them.
+
+    The live zip gets a locally computed CHECKSUM only so the unchanged loaders accept it."""
+    through = {}
+    for sym in SYMBOLS:
+        src, dst = root / "klines" / sym, root / "live" / sym
+        shutil.rmtree(dst, ignore_errors=True)
+        dst.mkdir(parents=True)
+        for f in src.glob(f"{sym}-1h-*.zip*"):
+            (dst / f.name).symlink_to(f.resolve())
+        start, rows = klines_v4.load_bars(src, symbol=sym)[0][-1] + 3600, []
+        while start + 3600 <= now_s:
+            batch = [k for k in _get(session, f"{LIVE_URL}?symbol={sym}&interval=1h&startTime={start * 1000}"
+                                              f"&limit=1000").json() if k[6] < now_s * 1000]  # closed bars only
+            if not batch:
+                break
+            rows += batch
+            start = batch[-1][0] // 1000 + 3600
+        if rows:
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr(f"{sym}-1h-live.csv", "".join(",".join(map(str, k[:6])) + "\n" for k in rows))
+            name = f"{sym}-1h-live.zip"
+            (dst / name).write_bytes(buf.getvalue())
+            (dst / f"{name}.CHECKSUM").write_text(f"{hashlib.sha256(buf.getvalue()).hexdigest()}  {name}\n")
+        through[sym] = datetime.fromtimestamp(start - 3600, timezone.utc).isoformat()
+    return through
 
 
 def _summary(trades: list[dict], total: dict, out: dict) -> dict:
@@ -87,8 +124,8 @@ def _summary(trades: list[dict], total: dict, out: dict) -> dict:
             "verdict": out["verdict"], "complete": out["complete"]}
 
 
-def run_all(root: Path) -> dict:
-    res = {}
+def run_all(root: Path, live: bool = False) -> dict:
+    res, kdir = {}, root / ("live" if live else "klines")
 
     def guard(name, fn):
         try:
@@ -98,13 +135,13 @@ def run_all(root: Path) -> dict:
 
     def v4():
         spec, sha = klines_v4.load_spec(SPECS / "klines_hourly_v4.json")
-        out = klines_v4.run(spec, sha, root / "klines" / "BTCUSDT", "forward")
+        out = klines_v4.run(spec, sha, kdir / "BTCUSDT", "forward")
         return {**_summary(out["trades"], out["result"], out), "data_through": out["exit_bar"],
                 "position": out["position_at_last_signal"]}
 
     def v6():
         spec, sha = klines_v6.load_spec(SPECS / "klines_hourly_v6.json")
-        out = klines_v6.run(spec, sha, root / "klines", "forward")
+        out = klines_v6.run(spec, sha, kdir, "forward")
         tr = [{**t, "symbol": s} for s, c in out["per_coin"].items() for t in c["trades"]]
         tr.sort(key=lambda t: t["entry_time"])
         exposure = {s: c["exposure_at_last_signal"] for s, c in out["per_coin"].items()}
@@ -120,6 +157,9 @@ def run_all(root: Path) -> dict:
 
     guard("v4", v4)
     guard("v6", v6)
+    for name in ("v4", "v6"):
+        if live and res[name]["status"] == "ok":
+            res[name].update(source="live (unverified)", verdict="interim_no_verdict")  # verdicts: verified data only
     guard("carry-v1", carry)
     return res
 
@@ -136,7 +176,12 @@ def refresh(config: dict, session=None, today=None) -> dict:
         download_all(session, root, today)
     except Exception as exc:
         summary["download_error"] = str(exc)
-    summary["strategies"] = run_all(root)
+    try:
+        summary["live_through"] = build_live(session, root, int(time.time()))
+        live = True
+    except Exception as exc:
+        summary["live_error"], live = str(exc), False
+    summary["strategies"] = run_all(root, live)
     root.mkdir(parents=True, exist_ok=True)
     tmp = root / "strategies.json.tmp"
     tmp.write_text(json.dumps(summary, sort_keys=True))
