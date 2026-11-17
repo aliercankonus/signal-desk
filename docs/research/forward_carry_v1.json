@@ -1,0 +1,89 @@
+{
+  "experiment_version": "forward-carry-v1-2026-11-18",
+  "review_status": "predeclared_not_executed",
+  "committed_before_any_forward_data_was_read": true,
+  "no_backtest_was_run": "This rule was written without running it on any history. Its parameters are round numbers chosen in advance, not fitted. No pre-window result exists, so none can be cited for it.",
+  "purpose": "Forward-test one funding-carry rule (long BTC spot, short BTC perpetual, held only when recent funding is clearly positive) as a separate, info-only research track next to v4/v6. It is a different return source from trend following: it earns funding payments, not price moves.",
+  "decision_context": "This adds a new rule; it changes nothing in v4/v6, their spec files, window or verdicts. Its verdict is reported separately and plays no part in the v4/v6 decision. Paper research only: it places no orders and needs no keys.",
+  "rule": {
+    "name": "carry-v1",
+    "instruments": {
+      "spot": "BTCUSDT spot",
+      "perp": "BTCUSDT USD-M perpetual future"
+    },
+    "position_when_on": "Long q BTC spot and short q BTC perp, same quantity q, so the position is close to price-neutral. Capital C is split in half: 0.5*C buys the spot leg and 0.5*C is perp margin. Perp notional at entry is 0.5*C, so the perp leg is 1x on its margin. No rebalancing while held.",
+    "position_when_off": "All cash, exposure 0.",
+    "signal": "At each funding settlement time T, m = mean of the last 21 funding rates with funding time <= T (about 7 days at the current 8h interval; the count is fixed at 21 records whatever the interval).",
+    "entry": "If off and m >= 0.0001 (0.01% per period), go on.",
+    "exit": "If on and m < 0.00005 (0.005% per period), go off.",
+    "otherwise": "Keep the current position (hysteresis band between 0.00005 and 0.0001).",
+    "timing": "A decision made at settlement T is executed at the open of the 1h bar that starts at T + 1h, at that bar's open price on each market (spot open for the spot leg, perp open for the perp leg). Funding records are only known after T, so this is causal.",
+    "funding_earned": "At each settlement T the position holds, cash += q * perp_open(bar starting at T) * rate(T). Positive rate: the short receives; negative rate: the short pays. Settlements where the position is off earn nothing. A position entered at T+1h first earns at the next settlement; a position exited at T+1h has earned at T.",
+    "hard_limit": "After the close of each 1h bar, if (perp_high of that bar - perp entry price) * q >= 0.5 * perp margin, the position is forced off at the next bar's open with exit costs. This is a conservative stand-in for liquidation. It is checked on the perp high, not the close. After a forced exit the normal entry rule applies again from the next settlement."
+  },
+  "accounting": {
+    "equity": "cash (which already holds funding received and costs paid) + q * spot_close + perp margin + q * (perp_entry - perp_close), marked at every 1h close while on; equal to cash while off.",
+    "costs": "On every entry and exit, each leg pays cost_per_side * that leg's notional at the execution price. A full round trip costs about 4 * 0.0012 * 0.5 = 0.24% of capital.",
+    "return_on_capital": "All returns and drawdowns are on the full capital C (spot leg plus margin), not on one leg's notional."
+  },
+  "window_utc": {
+    "start": "2026-11-18T00:00:00Z",
+    "end": "2027-11-17T00:00:00Z",
+    "embargo": "No entry before 2026-11-19T00:00:00Z (the first 24 hours). The rule starts off (cash).",
+    "first_decision": "The first settlement that can lead to an entry is 2026-11-19T00:00Z, executed at the 01:00Z open. The 21-record mean may use funding records before the start (past data only).",
+    "end_handling": "Any open position is closed at the open of the 2027-11-17T00:00Z bar with exit costs on both legs. The 2027-11-17T00:00Z settlement is not earned, because the position is closed at that bar's open."
+  },
+  "data": {
+    "source": "Binance public files on data.binance.vision, each zip verified against its .CHECKSUM before use: spot klines 1h (data/spot/.../klines/BTCUSDT/1h), USD-M futures klines 1h (data/futures/um/.../klines/BTCUSDT/1h), and USD-M funding rates (data/futures/um/monthly/fundingRate/BTCUSDT). Monthly zips where published, daily zips for the current month.",
+    "funding_lag": "Funding-rate files are published monthly only, so interim reads stop at the last complete month. The complete-window verdict needs the November 2027 funding file, published around early December 2027.",
+    "causal_only": "Decisions use only funding records with funding time <= the decision time and bars that have closed.",
+    "gaps": "Missing hours and missing funding settlements are counted and reported. A gap longer than 24 hours in either kline series, or a missing settlement while the position is on, is an error, not something to repair by hand.",
+    "where": "Research machine only. Not on the VPS. No exchange API keys: public files only."
+  },
+  "costs": {
+    "cost_per_side": 0.0012,
+    "breakdown": "0.10% fee + 0.02% adverse price per side, applied to each leg separately. The same cost is used for spot and perp; perp fees are usually lower, so this is conservative.",
+    "not_modeled": "Borrow costs (none needed: spot is bought with cash), transfer fees between spot and futures wallets, and funding-rate prediction (only settled rates are used)."
+  },
+  "benchmark": {
+    "benchmark": "cash, 0% return",
+    "info_only": "BTC buy-and-hold and the funding received by an always-on carry position (before and after one round trip of costs) are reported for information. They play no part in pass/fail."
+  },
+  "failure_criteria": {
+    "applies_to": "carry-v1 only, judged separately from v4 and v6",
+    "fail_if_any": [
+      "total net return after costs over the full window <= 0 (does not beat cash)",
+      "max drawdown of the equity curve >= 0.35"
+    ],
+    "boundary_note": "Same thresholds and same strict reading as forward_v4_v6.json: a drawdown of exactly 35% is a failure.",
+    "consequence_of_fail": "The rule is dropped. No re-tuning of the thresholds, lookback or hard limit, no re-run, no new window for the same idea.",
+    "consequence_of_pass": "The rule survives one out-of-sample year. It is weak evidence and not a profitability claim: the trade count is low and the year is one funding regime. A pass is not approval for live trading; Phase 3/4 gates and trading-safety still apply, and real carry adds exchange and wallet risks this test does not model."
+  },
+  "evaluation": {
+    "runner": "Not built yet. A later PR adds src/signal_desk/research/carry_v1.py with download, forward and backcheck commands in the style of klines_v4/klines_v6. It must pin this file's sha256 and refuse any other, and forward must refuse to overwrite an existing output file. The runner may not change any rule here; if building it shows the rule is ambiguous or wrong, that is a new spec version with a new forward window starting the day it is committed.",
+    "backcheck": "The runner may run on pre-window history for debugging only. That output is descriptive, is not evidence, and cannot change this spec.",
+    "verdict_runs": "Once, on the complete window: the first run on data that includes the 2027-11-17T00:00Z bar on both markets and every funding settlement before it. The verdict from that run stands; it is not re-run or replaced. The operator commits the JSON output with its git_commit and spec_sha256.",
+    "interim_reads": "Allowed for information only (verdict 'interim_no_verdict'). They never change the rule, costs, window or criteria.",
+    "report_must_include": [
+      "window, first and exit bar, missing hours per series, missing funding settlements",
+      "spec version, spec sha256, runner version, git commit",
+      "total net return after costs, CAGR, Sharpe, max drawdown",
+      "round trips, forced exits from the hard limit, settlements held and settlements available",
+      "return split: funding received, spot leg, perp leg, costs",
+      "fraction of time on and state at the last decision",
+      "cash benchmark and info-only baselines",
+      "verdict against failure_criteria, plus the caveat that trade counts are too low to be strong evidence"
+    ]
+  },
+  "safety": {
+    "paper_only": "execution_enabled=false stays enforced. This test places no orders, paper or real, and needs nothing on the VPS.",
+    "no_keys": "No exchange API keys anywhere."
+  },
+  "known_limits": [
+    "The rule switches only a few times a year, so the window will hold only a handful of round trips.",
+    "One year is one funding regime. Funding is high in bull markets and near zero or negative in bear markets; at the time of writing BTC is well below its long averages, so the rule may stay off for long stretches.",
+    "Basis risk: spot and perp prices are not identical, so the position is close to, but not exactly, price-neutral.",
+    "Liquidation is only approximated by the 50% margin hard limit; real margin rules, mark price and the exchange insurance fund are not modeled.",
+    "Exchange and counterparty risk (insolvency, withdrawal freezes, auto-deleveraging) is not modeled and is the main risk of real carry trades."
+  ]
+}
