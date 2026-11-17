@@ -13,6 +13,8 @@ from signal_desk.schemas.validate import validate_json
 ORDERING_VERSION = "session-applied-v1"
 FEATURE_VERSION = "features-v17-applied-l2-trade"
 MAX_BOOK_LEVELS = 20_000
+# Binance never zeroes far levels; keep the nearest per side (snapshot is 5000), trim in batches so the sort stays rare.
+TRIM_KEEP_PER_SIDE, TRIM_AT_PER_SIDE = 5_000, 6_000
 
 
 def canonical_bytes(value):
@@ -112,7 +114,10 @@ class CausalFeaturePipeline:
                     raise ValueError("Invalid, stale or discontinuous depth IDs")
                 self.book.apply_delta(event)
                 self.bridged = True
-            if len(self.book.bids) + len(self.book.asks) > self.policy["max_book_levels"]:
+            cap = self.policy["max_book_levels"]
+            if max(len(self.book.bids), len(self.book.asks)) > TRIM_AT_PER_SIDE:
+                self.book.trim(TRIM_KEEP_PER_SIDE)
+            if len(self.book.bids) + len(self.book.asks) > cap:
                 raise ValueError("Feature book level cap reached")
             top = self.book.top_of_book()
             if (top["best_bid"] is not None and top["best_ask"] is not None and
