@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>signal-desk · strategies</title>
+<style>
+:root {
+  --bg: #0e1116; --panel: #161b22; --inset: #0e1116; --line: #262c36; --text: #e6edf3;
+  --muted: #a8b3c2; --faint: #8b96a5; --accent: #79b8ff; --ok: #56d364; --warn: #f0b429; --bad: #ff7b72; --pin: #d2a8ff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: #12161d; border-bottom: 1px solid var(--line); }
+.wrap { max-width: 1360px; margin: 0 auto; padding: 14px 16px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.chip { font: 12px var(--mono); color: var(--muted); border: 1px solid #2e3541; border-radius: 6px; padding: 4px 8px; }
+.chip.paper { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--muted); text-decoration: none; padding: 10px 14px; border-radius: 6px; }
+nav a:hover { color: var(--text); background: #1a2029; }
+nav a[aria-current="page"] { color: var(--text); background: #1f2630; font-weight: 600; }
+.updated { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+main { max-width: 1360px; margin: 0 auto; padding: 20px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; }
+h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; }
+.main { flex: 999 1 600px; min-width: 0; }
+.side { flex: 1 1 320px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { background: var(--inset); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.stat .k { font: 11px var(--mono); color: var(--muted); }
+.stat .v { font: 600 20px var(--mono); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--muted); }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.scroll { overflow-x: auto; }
+.cal { min-width: 290px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wd { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+.cell { min-height: 46px; border-radius: 6px; border: 1px solid transparent; font: 600 12px var(--mono); display: flex; align-items: center; justify-content: space-between; padding: 0 8px; cursor: pointer; color: var(--bg); background: transparent; }
+.cell.collected { background: var(--accent); }
+.cell.clean { background: var(--ok); }
+.cell.reconnects { background: var(--warn); }
+.cell.gap { background: var(--bad); }
+.cell.missing { background: #5a1e1e; color: #ffd8d3; border-color: var(--bad); }
+.cell.open { background: #1b2a3d; color: var(--text); border-color: var(--accent); }
+.cell.future { color: #6b7685; border: 1px dashed #4a5361; cursor: default; }
+.cell.blank { visibility: hidden; }
+.cell.pinned { box-shadow: inset 0 0 0 2px var(--pin); }
+.cell[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 1px; }
+.cell .w { font-size: 10px; font-weight: 500; opacity: .85; }
+.note { font-size: 13px; color: var(--muted); }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13px; }
+dt { color: var(--muted); }
+dd { margin: 0; font-family: var(--mono); text-align: right; overflow-wrap: anywhere; }
+.pill { font: 600 11px var(--mono); color: var(--bg); border-radius: 999px; padding: 4px 10px; }
+table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 4px; border-bottom: 1px solid #1c222b; overflow-wrap: anywhere; }
+td.r, th.r { text-align: right; }
+td + td, th + th { white-space: nowrap; }
+.callout { background: #2a2312; border: 1px solid #5c4a1a; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #f5e2b8; }
+@media (max-width: 600px) { .cal { gap: 4px; } .cell { padding: 0; justify-content: center; font-size: 11px; min-height: 44px; } .cell .w { display: none; } }
+#error { display: none; color: var(--bad); font: 12px var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <span class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#79b8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>signal-desk</span>
+    <span class="chip paper">PAPER · read-only</span>
+    <nav aria-label="Main"><a href="/">Overview</a><a href="/sessions">Sessions</a><a href="/strategies" aria-current="page">Strategies</a></nav>
+    <span class="updated" id="updated">loading…</span>
+  </div>
+</header>
+
+<main>
+  <h1>Strategies · forward test</h1>
+  <p class="note">Paper research only, no orders. Data comes from public Binance files and is refreshed every hour. All returns are after costs (0.12% per side) and are compared with cash (0%). Interim reads give no verdict.</p>
+  <div id="error"></div>
+  <div id="list" class="row"></div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const NAMES = { "v4": "v4 · BTC 2400h SMA ±2%", "v6": "v6 · BTC+ETH, 4 SMA lengths", "carry-v1": "carry-v1 · BTC funding carry" };
+const pct = (x) => (x === undefined || x === null ? "–" : (x * 100).toFixed(2) + "%");
+const tm = (s) => (s ? s.replace("T", " ").slice(0, 16) : "–");
+function el(tag, attrs, text) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function stat(k, v, color) {
+  const s = el("div", { class: "stat" });
+  s.append(el("span", { class: "k" }, k));
+  const val = el("span", { class: "v" }, v);
+  if (color) val.style.color = color;
+  s.append(val);
+  return s;
+}
+const sign = (x) => (x > 0 ? "var(--ok)" : x < 0 ? "var(--bad)" : undefined);
+
+function card(name, s) {
+  const c = el("section", { class: "card main" });
+  const head = el("div", { class: "bar", style: "justify-content: space-between" });
+  head.append(el("h2", {}, NAMES[name] || name));
+  const verdict = s.status === "ok" ? s.verdict : "waiting for data";
+  const pill = el("span", { class: "pill" }, verdict.toUpperCase().replaceAll("_", " "));
+  pill.style.background = verdict === "pass" ? "var(--ok)" : verdict === "fail" ? "var(--bad)" : "var(--warn)";
+  head.append(pill);
+  c.append(head);
+  if (s.status !== "ok") {
+    c.append(el("div", { class: "callout" }, "No forward result yet: " + s.error));
+    return c;
+  }
+  const st = el("div", { class: "stats" });
+  st.append(stat("trades", String(s.trade_count) + (s.open ? " (" + s.open + " open)" : "")),
+            stat("profitable", String(s.winners), s.winners ? "var(--ok)" : undefined),
+            stat("loss", String(s.losers), s.losers ? "var(--bad)" : undefined),
+            stat("net return vs cash", pct(s.total_net_return), sign(s.total_net_return)),
+            stat("max drawdown", pct(s.max_drawdown), s.max_drawdown >= 0.35 ? "var(--bad)" : undefined));
+  c.append(st);
+  const pos = typeof s.position === "object"
+    ? Object.entries(s.position).map(([k, v]) => k + " " + Math.round(v * 100) + "% long").join(", ")
+    : (s.position ? (name === "carry-v1" ? "on (long spot, short perp)" : "long") : "flat (cash)");
+  c.append(el("p", { class: "note" }, "Position now: " + pos + " · data through " + tm(s.data_through) + " UTC"));
+  if (name === "v6") c.append(el("p", { class: "note" }, "Each v6 trade uses 1/8 of capital (2 coins × 4 lengths); the net return on top is for the whole portfolio."));
+  if (!s.trades.length) {
+    c.append(el("p", { class: "note" }, "No trades yet."));
+    return c;
+  }
+  const wrap = el("div", { class: "scroll" });
+  const t = el("table");
+  const hr = el("tr");
+  const cols = name === "v6" ? ["coin", "length", "entry", "exit", "net", "status"] : ["entry", "exit", "net", "status"];
+  for (const h of cols) hr.append(el("th", h === "net" ? { class: "r" } : {}, h));
+  t.append(hr);
+  for (const tr of s.trades.slice().reverse()) {
+    const r = el("tr");
+    if (name === "v6") r.append(el("td", {}, tr.symbol), el("td", {}, tr.length_bars + "h"));
+    r.append(el("td", {}, tm(tr.entry_time)), el("td", {}, tr.exit_time ? tm(tr.exit_time) : "–"));
+    const net = el("td", { class: "r" }, pct(tr.net_return));
+    if (sign(tr.net_return)) net.style.color = sign(tr.net_return);
+    r.append(net, el("td", {}, (tr.status || "") + (tr.forced ? " (forced)" : "")));
+    t.append(r);
+  }
+  wrap.append(t);
+  c.append(wrap);
+  return c;
+}
+
+async function load() {
+  try {
+    const res = await fetch("/api/strategies", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const list = $("list");
+    list.replaceChildren();
+    if (!data.strategies) {
+      $("updated").textContent = data.status || "waiting";
+      list.append(el("div", { class: "callout" }, "The first data refresh is still running. Check back in a few minutes."));
+      return;
+    }
+    $("updated").textContent = "refreshed " + tm(data.updated_at) + " UTC";
+    for (const [name, s] of Object.entries(data.strategies)) list.append(card(name, s));
+    $("error").style.display = data.download_error ? "block" : "none";
+    $("error").textContent = data.download_error ? "Download problem: " + data.download_error : "";
+  } catch (e) {
+    $("error").style.display = "block";
+    $("error").textContent = "Could not load strategies: " + e.message;
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

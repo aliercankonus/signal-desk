@@ -46,6 +46,7 @@ Status (2026-11-16):
   - Decide whether raw records should keep only the original Binance message and map on replay: ~830 B/event today vs about a third of that, and ~16x compressed with zstd-19 (~0.3 GB/day). This changes the raw schema, the audit and hash verification, so it needs its own design review. Don't change it mid-collection.
 - Add a cost model: 0.10% taker per side (0.20% round trip) unless verified lower fees apply, plus spread/slippage.
 - Evaluate once on held-out data after validation-only selection.
+- Forward tests v4, v6 (2026-11-17 → 2027-11-17) and carry-v1 (2026-11-18 → 2027-11-17) run hourly on the VPS and show on `/strategies` (trades, winners/losers after 0.12% per side, net vs cash, MDD). Owner approved this on 2026-11-17, overriding the specs' "Research machine only. Not on the VPS." line; no rule, cost or window changes. Public Binance files only, no keys, no orders.
 - **Gate:** positive expected return after all costs on out-of-sample data, with enough trades to matter. If not met: stop or change the hypothesis. No tuning on the test set.
 
 ## Phase 3 — Live paper trading (several weeks)

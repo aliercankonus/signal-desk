@@ -85,3 +85,13 @@ def test_forward_refuses_overwrite(tmp_path):
     out.write_text("{}")
     assert cv.main(["forward", "--spec", str(SPEC), "--data", str(tmp_path), "--out", str(out)]) == 2
     assert out.read_text() == "{}"
+
+
+def test_trade_log_matches_result():
+    log = []
+    r = cv.simulate(market(), market(), funding(), START, END, COST, log=log)
+    assert len(log) == 1 and log[0]["status"] == "closed" and not log[0]["forced"]
+    assert log[0]["net_return"] == pytest.approx(r["total_net_return"])
+    log = []
+    cv.simulate(market(), market(high={START + 50 * H: 151.0}), funding(), START, END, COST, log=log)
+    assert [t["forced"] for t in log] == [True, False]

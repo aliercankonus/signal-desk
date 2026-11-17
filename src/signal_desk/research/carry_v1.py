@@ -138,8 +138,11 @@ def _series_check(rows, start: int, stop: int, label: str) -> int:
     return (stop - start) // HOUR + 1 - len(times)
 
 
-def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int | None = None) -> dict:
-    """Run carry-v1 on bars start..end (complete) or start..last (interim, last < end)."""
+def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int | None = None,
+             log: list | None = None) -> dict:
+    """Run carry-v1 on bars start..end (complete) or start..last (interim, last < end).
+
+    If log is a list, one dict per round trip is appended to it (net_return includes funding)."""
     complete = last is None
     stop = end if complete else last
     times = sorted(t for t in spot.keys() & perp.keys() if start <= t <= stop)
@@ -158,14 +161,16 @@ def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int |
     n = {"round_trips": 0, "forced_exits": 0, "settlements_held": 0, "settlements_available": 0,
          "on_bars": 0, "bars": 0, "delayed_executions": 0}
 
-    def enter(so, po):
+    def enter(so, po, t):
+        if log is not None:
+            log.append({"entry_time": _iso(t), "spot_entry": so, "perp_entry": po, "equity": st["cash"]})
         q = 0.5 * st["cash"] / so
         c = cost * q * (so + po)
         st.update(q=q, margin=0.5 * st["cash"], se=so, pe=po, on=True)
         st["cash"] -= q * so + st["margin"] + c
         split["costs"] -= c
 
-    def leave(so, po, count=True):
+    def leave(so, po, t, count=True, forced=False):
         q = st["q"]
         c = cost * q * (so + po)
         st["cash"] += q * so + st["margin"] + q * (st["pe"] - po) - c
@@ -174,6 +179,10 @@ def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int |
         split["costs"] -= c
         n["round_trips"] += count
         st.update(q=0.0, margin=0.0, on=False)
+        if log is not None:
+            tr = log[-1]
+            tr.update(exit_time=_iso(t), spot_exit=so, perp_exit=po, forced=forced,
+                      net_return=st["cash"] / tr.pop("equity") - 1, status="closed" if count else "open")
 
     curve, pending, last_decision, prev = [1.0], None, None, start - HOUR
     fi = bisect_left(ftimes, start)
@@ -182,15 +191,15 @@ def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int |
         po, ph, pc = perp[t]
         if complete and t == end:
             if st["on"]:
-                leave(so, po)
+                leave(so, po, t)
             curve.append(st["cash"])
             break
         if pending and t >= pending[0]:  # execute at this bar's open
             n["delayed_executions"] += t > pending[0]
             if pending[1] and not st["on"]:
-                enter(so, po)
+                enter(so, po, t)
             elif not pending[1] and st["on"]:
-                leave(so, po)
+                leave(so, po, t, forced=pending[2])
                 n["forced_exits"] += pending[2]
             pending = None
         if st["on"] and any(prev < g <= t for g in gaps):
@@ -226,7 +235,7 @@ def simulate(spot, perp, funding, start: int, end: int, cost: float, last: int |
     open_at_end = st["on"]
     if not complete:
         if open_at_end:
-            leave(sc, pc, count=False)  # interim value: exit at the last close
+            leave(sc, pc, t + HOUR, count=False)  # interim value: exit at the last close
         curve.append(st["cash"])
 
     rets = [b / a - 1 for a, b in zip(curve, curve[1:])]
@@ -283,7 +292,8 @@ def run(spec, sha, data_dir: Path, start: int, end: int, phase: str) -> dict:
                    f_last + f_ih * HOUR - HOUR)
         if last < start:
             raise KlinesError(f"no usable {phase} data yet (data ends {_iso(last)})")
-    res = simulate(spot, perp, funding, start, end, spec["costs"]["cost_per_side"], last)
+    log = []
+    res = simulate(spot, perp, funding, start, end, spec["costs"]["cost_per_side"], last, log)
     checks = {"total_net_positive": res["total_net_return"] > 0,
               "max_drawdown_below_35pct": res["max_drawdown"] < 0.35}
     if phase == "backcheck":
@@ -292,7 +302,7 @@ def run(spec, sha, data_dir: Path, start: int, end: int, phase: str) -> dict:
         verdict = ("pass" if all(checks.values()) else "fail") if complete else "interim_no_verdict"
     return {"phase": phase, "spec_version": spec["experiment_version"], "spec_sha256": sha,
             "runner_version": RUNNER_VERSION, "git_commit": _git_commit(),
-            "window": [_iso(start), _iso(end)], "complete": complete, "result": res,
+            "window": [_iso(start), _iso(end)], "complete": complete, "result": res, "trades": log,
             "checks": checks, "verdict": verdict,
             "caveat": "few round trips and one funding regime: weak evidence, not a profitability claim"}
 

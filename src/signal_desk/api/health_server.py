@@ -7,10 +7,12 @@ import sys
 from pathlib import Path
 
 from signal_desk.api.overview import build_overview, build_sessions
+from signal_desk.api.strategies import build_strategies, start_refresh_thread
 from signal_desk.config.loader import ConfigError, validate_config
 
 STATIC = Path(__file__).with_name("static")
-PAGES = {"/": STATIC / "overview.html", "/sessions": STATIC / "sessions.html"}
+PAGES = {"/": STATIC / "overview.html", "/sessions": STATIC / "sessions.html",
+         "/strategies": STATIC / "strategies.html"}
 
 
 def build_status(config_path: str) -> tuple[int, dict]:
@@ -60,6 +62,9 @@ class HealthHandler(BaseHTTPRequestHandler):
         if path == "/api/sessions":
             self._api_json(build_sessions)
             return
+        if path == "/api/strategies":
+            self._api_json(build_strategies)
+            return
         if path not in ("/health", "/ready"):
             self._send(404, {"error": "not_found"})
             return
@@ -90,6 +95,7 @@ def main() -> int:
     args = parser.parse_args()
     HealthHandler.config_path = args.config
     HealthHandler.cached_status = build_status(args.config)
+    start_refresh_thread(args.config)
     server = ThreadingHTTPServer((args.host, args.port), HealthHandler)
     print(f"health_server listening on {args.host}:{args.port} paper_only=true")
     server.serve_forever()
