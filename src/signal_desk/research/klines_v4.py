@@ -114,6 +114,24 @@ def simulate(pos, times, opens, a: int, b: int, cost: float, embargo_s: int = 24
             "max_drawdown": mdd, "round_trips": entries, "exposure": long_bars / n}
 
 
+def trades(pos, times, opens, a: int, b: int, cost: float, embargo_s: int = 24 * HOUR,
+           complete: bool = True) -> list[dict]:
+    """Round trips with the same timing and costs as simulate; the last one is "open" on an interim read."""
+    iso = lambda t: datetime.fromtimestamp(t, timezone.utc).isoformat()
+    out, entry = [], None
+    for d in range(a, b + 1):
+        p = 0 if d == b or times[d] < times[a] + embargo_s else pos[d]
+        if p and entry is None:
+            entry = d
+        elif not p and entry is not None:
+            out.append({"entry_time": iso(times[entry]), "entry_price": opens[entry],
+                        "exit_time": iso(times[d]), "exit_price": opens[d],
+                        "net_return": opens[d] / opens[entry] * (1 - cost) ** 2 - 1,
+                        "status": "open" if d == b and not complete else "closed"})
+            entry = None
+    return out
+
+
 def _ts(day: str) -> int:
     return int(datetime.fromisoformat(day).replace(tzinfo=timezone.utc).timestamp())
 
@@ -148,6 +166,7 @@ def run(spec, sha, data_dir: Path, phase: str) -> dict:
             "runner_version": RUNNER_VERSION, "git_commit": _git_commit(),
             "first_bar": iso(times[a]), "exit_bar": iso(times[b]), "complete": complete,
             "result": res, "position_at_last_signal": pos[b],
+            "trades": trades(pos, times, opens, a, b, cost, complete=complete),
             "baselines": {"cash": {"total_net_return": 0.0},
                           "buy_and_hold_info_only": simulate([1] * len(times), times, opens, a, b, cost, 0)},
             "checks": checks,

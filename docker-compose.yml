@@ -22,7 +22,7 @@ services:
     # their /api/ data are routed; /health stays internal and port 8080 stays on 127.0.0.1.
     labels:
       - "traefik.enable=${UI_PUBLIC:-false}"
-      - "traefik.http.routers.signal-desk-ui.rule=Host(`${UI_HOST:-ui.invalid}`) && (Path(`/`) || Path(`/api/status`) || Path(`/sessions`) || Path(`/api/sessions`))"
+      - "traefik.http.routers.signal-desk-ui.rule=Host(`${UI_HOST:-ui.invalid}`) && (Path(`/`) || Path(`/api/status`) || Path(`/sessions`) || Path(`/api/sessions`) || Path(`/strategies`) || Path(`/api/strategies`))"
       - "traefik.http.routers.signal-desk-ui.entrypoints=websecure"
       - "traefik.http.routers.signal-desk-ui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.signal-desk-ui.middlewares=signal-desk-ui-auth"

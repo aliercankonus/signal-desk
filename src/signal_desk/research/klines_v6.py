@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 
 from signal_desk.research.klines_v3 import KlinesError
-from signal_desk.research.klines_v4 import BARS_PER_YEAR, HOUR, _ts, load_bars, states
+from signal_desk.research.klines_v4 import trades, BARS_PER_YEAR, HOUR, _ts, load_bars, states
 from signal_desk.research.klines_v5 import _metrics, _portfolio, fetch
 from signal_desk.research.trades_only import _git_commit
 
@@ -97,7 +97,10 @@ def run(spec, sha, data_dir: Path, phase: str) -> dict:
         v4_curves.append(v4)
         per_coin[sym] = {**res, "exposure_at_last_signal": sum(s[b] for s in subs) / len(subs),
                          "buy_and_hold_net_return_info": bh_res["net_return"],
-                         "v4_rule_net_return_info": v4_res["net_return"]}
+                         "v4_rule_net_return_info": v4_res["net_return"],
+                         "trades": [{**t, "length_bars": n, "weight": 1 / (len(subs) * len(loaded))}
+                                    for n, s in zip(rule["lengths_bars"], subs)
+                                    for t in trades(s, times, opens, a, b, cost, complete=complete)]}
     port = _metrics(_portfolio(curves, start, last))
     port["round_trips"] = sum(c["round_trips"] for c in per_coin.values())
     port["avg_exposure"] = sum(c["exposure"] for c in per_coin.values()) / len(per_coin)

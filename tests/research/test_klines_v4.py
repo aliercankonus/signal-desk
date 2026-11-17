@@ -70,3 +70,17 @@ def test_forward_is_interim_until_segment_end(monkeypatch, tmp_path):
     out = k.run(spec, sha, tmp_path, "forward")
     assert out["verdict"] == "interim_no_verdict" and not out["complete"]
     assert not (tmp_path / k.BACKCHECK_MARKER).exists()
+
+
+def test_trades_match_simulate():
+    times = [i * H for i in range(12)]
+    opens = [100, 101, 103, 102, 99, 98, 101, 104, 106, 105, 103, 107]
+    pos = [0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1]
+    res = k.simulate(pos, times, opens, 0, 11, 0.0012, embargo_s=0)
+    tr = k.trades(pos, times, opens, 0, 11, 0.0012, embargo_s=0, complete=False)
+    assert len(tr) == res["round_trips"] == 3
+    assert [t["status"] for t in tr] == ["closed", "closed", "open"]
+    eq = 1.0
+    for t in tr:
+        eq *= 1 + t["net_return"]
+    assert eq - 1 == pytest.approx(res["total_net_return"])
