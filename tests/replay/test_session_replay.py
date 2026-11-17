@@ -1,5 +1,6 @@
 """Captured application order, parity, failure atomicity and bounded resources."""
 from copy import deepcopy
+from decimal import Decimal
 import asyncio
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -220,14 +221,18 @@ def test_deadline_is_checked_while_scanning(capture, monkeypatch):
         replay_session(raw, session, max_runtime_seconds=1)
 
 
-def test_book_growth_cap_fails_capture(capture):
+def test_book_growth_prunes_far_levels(capture):
     raw, session, emit, trade, depth, online, config = capture
     pipeline = config["_capture_features"]
     pipeline.policy["max_book_levels"] = 2
-    event = map_depth_delta({"U": 11, "u": 11, "E": 1, "b": [["99", "1"]], "a": []})
+    best_bid = max(pipeline.book.bids, key=Decimal)
+    best_ask = min(pipeline.book.asks, key=Decimal)
+    event = map_depth_delta({"U": 11, "u": 11, "E": 1, "b": [["1", "1"]], "a": []})
     event["previous_final_update_id"] = 10
-    with pytest.raises(ValueError, match="level cap"): emit(event)
-    assert len(rows(depth_file(raw))) == 1
+    emit(event)
+    assert list(pipeline.book.bids) == [best_bid]
+    assert list(pipeline.book.asks) == [best_ask]
+    assert len(rows(depth_file(raw))) == 2  # the delta is persisted, not rejected
 
 
 def test_stale_trade_or_book_is_unready(capture):

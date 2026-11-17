@@ -44,6 +44,12 @@ def feature_policy(*, stale_l2_ms=2000, stale_trades_ms=3000,
     return values
 
 
+def _keep_nearest(side, keep, best_first):
+    """Keep the `keep` price levels closest to the touch; far levels never get deletes."""
+    prices = sorted(side, key=Decimal, reverse=best_first)[:keep]
+    return {p: side[p] for p in prices}
+
+
 class CausalFeaturePipeline:
     """Single-session apply order, bounded L2 state and lifetime trade totals.
 
@@ -64,6 +70,12 @@ class CausalFeaturePipeline:
         self.last_trade_id = None
         self.depth_ns = self.trade_ns = None
         self.bridged = False
+
+    def _prune_far_levels(self):
+        # Trim to a quarter of the cap per side so the sort runs rarely, not on every delta.
+        keep = max(1, self.policy["max_book_levels"] // 4)
+        self.book.bids = _keep_nearest(self.book.bids, keep, best_first=True)
+        self.book.asks = _keep_nearest(self.book.asks, keep, best_first=False)
 
     def apply(self, event, *, validated=False):
         if not validated:
@@ -113,7 +125,7 @@ class CausalFeaturePipeline:
                 self.book.apply_delta(event)
                 self.bridged = True
             if len(self.book.bids) + len(self.book.asks) > self.policy["max_book_levels"]:
-                raise ValueError("Feature book level cap reached")
+                self._prune_far_levels()
             top = self.book.top_of_book()
             if (top["best_bid"] is not None and top["best_ask"] is not None and
                     Decimal(top["best_bid"]) >= Decimal(top["best_ask"])):
