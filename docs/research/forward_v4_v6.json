@@ -1,0 +1,81 @@
+{
+  "experiment_version": "klines-forward-v4-v6-2026-11-17",
+  "review_status": "predeclared_not_executed",
+  "committed_before_any_forward_data_was_read": true,
+  "purpose": "Fix, before any forward data exists, the only test that can decide whether the v4 and v6 rules are kept. The 2024-01-01..2026-11-01 backcheck window is spent and contaminated (10 v4 trades, 168 v6 sub-signal trades): it is descriptive only and is not evidence for this test.",
+  "decision_context": "No new rule versions are built on pre-2026-11-17 history. v3 failed and stays dropped. This file adds no rule, parameter or cost; it pins the existing specs and states what happens after the verdict.",
+  "rules_under_test": {
+    "v4": {
+      "spec": "docs/research/klines_hourly_v4.json",
+      "spec_sha256": "c4da5109c54835fb0fe6a6a094d6d8c8cda650324e35b8ddafe7d8ee49a43e86",
+      "runner": "python -m signal_desk.research.klines_v4 forward",
+      "runner_version": "research-klines-hourly-v4",
+      "summary": "BTCUSDT long/flat; long when close > SMA(2400h) * 1.02, flat when close < SMA(2400h) * 0.98, else unchanged"
+    },
+    "v6": {
+      "spec": "docs/research/klines_hourly_v6.json",
+      "spec_sha256": "0f4abd984c236a9cbded19666143b7979f71cc192309059e9643abb861717bfc",
+      "runner": "python -m signal_desk.research.klines_v6 forward",
+      "runner_version": "research-klines-hourly-v6",
+      "summary": "BTCUSDT + ETHUSDT 50/50 sleeves, no rebalancing; per-coin exposure = mean of the 2% band states for SMA 480/1200/2400/4800h"
+    },
+    "pinned_at_commit": "e4fe5168e3160518566256ec75dad233c435d049",
+    "unchanged": "Rules, lengths, band, clock, costs, segment bounds and criteria are exactly as in the two specs. The runners refuse a spec whose sha256 differs. Any change, including a bug fix that changes results, is a new spec version, and its forward window starts on the day it is committed."
+  },
+  "window_utc": {
+    "start": "2026-11-17T00:00:00Z",
+    "end": "2027-11-17T00:00:00Z",
+    "embargo": "No entry before 2026-11-18T00:00:00Z (the first 24 hours). Each rule starts flat (exposure 0).",
+    "end_handling": "Any open exposure is closed at the open of the 2027-11-17T00:00Z bar with exit cost.",
+    "warmup": "Signals may use closes before the start (past data only, causal). v4 needs 2400 hourly bars and v6 needs 4800 before the start."
+  },
+  "data": {
+    "source": "Binance public spot 1h klines (data.binance.vision), monthly and daily zips, each verified against its .CHECKSUM before use, as defined in each spec.",
+    "causal_only": "The state after the close of bar i is held from the open of bar i+1 to the open of bar i+2.",
+    "gaps": "Missing hours are counted and reported. A gap longer than 24 hours inside the window is an error, not something to repair by hand.",
+    "where": "Research machine only. Not on the VPS. No exchange API keys: public files only."
+  },
+  "costs": {
+    "cost_per_side": 0.0012,
+    "breakdown": "0.10% fee + 0.02% adverse price per side",
+    "v4": "equity * (1 - 0.0012) on every entry and exit",
+    "v6": "sleeve equity * (1 - 0.0012 * |change in exposure|) on every exposure change"
+  },
+  "benchmark": {
+    "benchmark": "cash, 0% return",
+    "info_only": "Buy-and-hold (BTC for v4, 50/50 BTC+ETH for v6) and the v4 rule on 50/50 BTC+ETH are reported for information. They play no part in pass/fail, because holding BTC is not an option."
+  },
+  "failure_criteria": {
+    "applies_to": "each rule on its own; v4 and v6 are judged separately",
+    "fail_if_any": [
+      "total net return after costs over the full window <= 0 (does not beat cash)",
+      "max drawdown of the equity curve >= 0.35 (v6: portfolio equity curve)"
+    ],
+    "boundary_note": "The committed runners pass only when max drawdown < 0.35, so a drawdown of exactly 35% counts as a failure. This is the stricter reading of 'above 35%' and matches the code.",
+    "consequence_of_fail": "The rule is dropped. No re-tuning, no re-run, no new window for the same rule family on the same idea.",
+    "consequence_of_pass": "The rule survives one out-of-sample year. Trade counts are far below a few hundred, so a pass is weak evidence and is not a profitability claim. A pass is not approval for live trading; Phase 3/4 gates and trading-safety still apply."
+  },
+  "evaluation": {
+    "verdict_runs": "Once per rule, on the complete window: the first run on data that includes the 2027-11-17T00:00Z bar for every symbol (that day's daily zip is published around 2027-11-18). The verdict from that run stands; it is not re-run, re-ordered or replaced.",
+    "verdict_enforcement": "The current runners compute a verdict only when the window is complete but do not block a second complete run. Until a marker check is added, the operator runs the complete-window verdict once and commits the JSON output with its git_commit and spec_sha256.",
+    "interim_reads": "Allowed for information only (the runners return verdict 'interim_no_verdict'). They never change the rule, costs, window or criteria. A drawdown above 35% during the window can be reported as an interim fact but the formal verdict waits for the complete run.",
+    "report_must_include": [
+      "window, first and exit bar, missing hours per symbol",
+      "spec version, spec sha256, runner version, git commit",
+      "total net return after costs, CAGR, Sharpe, max drawdown",
+      "trade counts: v4 round trips; v6 sub-signal round trips per coin and portfolio total",
+      "average exposure and exposure at the last signal",
+      "cash benchmark and info-only baselines",
+      "verdict per rule against failure_criteria, plus the caveat that trade counts are too low to be strong evidence"
+    ]
+  },
+  "safety": {
+    "paper_only": "execution_enabled=false stays enforced. This test places no orders, paper or real, and needs nothing on the VPS.",
+    "no_keys": "No exchange API keys anywhere."
+  },
+  "known_limits": [
+    "v4 makes about 3 round trips a year, so the window will hold only a handful of trades.",
+    "v6 sub-signal round trips overcount independent decisions; BTC and ETH are highly correlated, so v4 and v6 are not independent tests.",
+    "One year is one market regime. A sideways year can fail both rules without saying much about other regimes, and a bull year can pass them without proving an edge."
+  ]
+}
