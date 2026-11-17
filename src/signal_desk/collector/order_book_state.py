@@ -44,6 +44,14 @@ class L2BookState:
         self.last_update_id = final_id
         self.state = "READY"
 
+    def trim(self, keep: int) -> None:
+        """Drop levels beyond the `keep` nearest each side: Binance never zeroes far levels."""
+        for side_name, reverse in (("bids", True), ("asks", False)):
+            side = getattr(self, side_name)
+            if len(side) > keep:
+                near = sorted(side, key=Decimal, reverse=reverse)[:keep]
+                setattr(self, side_name, {p: side[p] for p in near})
+
     def top_of_book(self) -> dict[str, str | None]:
         best_bid = max(self.bids.keys(), key=Decimal) if self.bids else None
         best_ask = min(self.asks.keys(), key=Decimal) if self.asks else None
